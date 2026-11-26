@@ -147,6 +147,13 @@ html[data-theme=white] #panel { box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12); }
 /* split island: the main pill shrinks and the timer bubble sits beside it */
 #notch.dual[data-state=live] #panel { width: var(--pw-dual); }
 #notch[data-state=live] .ear  { width: 7px; height: 7px; }
+/* "Line" look: music keeps the notch at its resting size (thin, or small) with a progress line */
+#notch { --ln-h: 8px; }
+#notch.idle-small { --ln-h: 18px; }
+#notch.live-line[data-state=live] #panel { width: var(--idle-w); height: var(--ln-h); border-radius: 0 0 8px 8px; }
+#notch.live-line.idle-small[data-state=live] #panel { width: var(--idle-small-w); border-radius: 0 0 10px 10px; }
+#notch.live-line.priv-on[data-state=live] #panel { width: calc(var(--idle-w) + 16px); }
+#notch.live-line[data-state=live] .ear { width: 5px; height: 5px; }
 
 #notch[data-state=game] #panel { width: 480px; height: 24px; border-radius: 0 0 12px 12px; }
 #notch[data-state=game] .ear  { width: 7px; height: 7px; }
@@ -215,6 +222,7 @@ html[data-theme=glass] #panel { --text-shadow: 0 1px calc(2px + var(--glass-clea
   pointer-events: none;
   transition: opacity .18s var(--ease), transform .4s var(--ease), filter .22s var(--ease);
 }
+#notch.live-line[data-state=live] .v-line,
 #notch[data-state=timer]    .v-timer,
 #notch[data-state=eyes]     .v-eyes,
 #notch[data-state=call]     .v-call,
@@ -230,6 +238,8 @@ html[data-theme=glass] #panel { --text-shadow: 0 1px calc(2px + var(--glass-clea
   pointer-events: auto;
   transition-delay: .12s;
 }
+/* "Line" look: the art / name / ring pill stays hidden */
+#notch.live-line[data-state=live] .v-live { opacity: 0; transform: translateX(-50%) scale(.94); filter: blur(8px); pointer-events: none; transition-delay: 0s; }
 
 /* ---------------- focus timer colour (Settings) + split bubble */
 :root { --focus: #ff9f0a; --focus-now: var(--focus); }
@@ -268,6 +278,18 @@ html[data-theme=white] .bubble { box-shadow: 0 0 0 .5px rgba(0, 0, 0, .12); }
 @keyframes endingPulse { 50% { opacity: .55; } }
 
 /* ---------------- live activity */
+/* "Line" look */
+.v-line { width: var(--idle-w); height: var(--ln-h); display: flex; align-items: center; padding: 0 11px; }
+#notch.idle-small .v-line { width: var(--idle-small-w); }
+#notch.priv-on .v-line { width: calc(var(--idle-w) + 16px); padding-right: 20px; }
+.ln-track { position: relative; flex: 1; height: 2px; border-radius: 1px; background: var(--track); overflow: hidden; }
+#notch.idle-small .ln-track { height: 3px; border-radius: 2px; }
+.ln-track b { position: absolute; inset: 0; border-radius: inherit; background: var(--accent); transform-origin: left center; transform: scaleX(0); transition: transform 2s linear, background .3s; }
+#notch:not(.playing) .ln-track b { background: var(--muted); }
+/* length unknown (live stream): a short piece sliding along */
+.ln-track.indeterminate b { right: auto; width: 35%; transform: none; transition: none; animation: lnSlide 1.8s ease-in-out infinite; }
+#notch:not(.playing) .ln-track.indeterminate b { animation-play-state: paused; }
+@keyframes lnSlide { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
 .v-live { width: var(--pw); height: 26px; display: flex; align-items: center; justify-content: space-between; padding: 0 12px 0 10px; }
 .l-left, .l-right { display: flex; align-items: center; gap: 6px; }
 .l-art { width: 17px; height: 17px; border-radius: 5px; }
@@ -543,6 +565,7 @@ html[data-theme=glass] .t-badge { border-color: rgba(255, 255, 255, .45); }
 #notch[data-state=live].priv-on .v-live { padding-right: 24px; }
 #notch[data-state=game].priv-on .v-game { padding-right: 26px; }
 #notch[data-state=live] .priv i, #notch[data-state=game] .priv i, #notch.idle-small .priv i { width: 5px; height: 5px; }
+#notch.live-line:not(.idle-small)[data-state=live] .priv i { width: 4px; height: 4px; }
 @keyframes privIn { from { transform: scale(0); } to { transform: scale(1); } }
 .tabs { display: flex; align-items: center; gap: 2px; }
 .tab { position: relative; width: 32px; height: 28px; border-radius: 9px; display: grid; place-items: center; color: var(--dim); transition: color .2s, background .2s; }

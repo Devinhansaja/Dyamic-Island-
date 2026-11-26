@@ -42,9 +42,15 @@ function restingState() {
   if (ui.mode === 'game' && S.gameMode === 'stats') return 'game';
   if (call.ring) return 'ring';
   if (call.proc) return 'call';
-  if (dlActive()) return 'live';
   const timerLive = focus.active;
   const musicLive = media.has && media.playing && S.liveActivity;
+  // Only music playing, "Line" look: the notch keeps its resting size with a progress line.
+  const line = musicLive && !timerLive && !dlActive() && S.liveStyle !== 'full';
+  if (line !== notch.classList.contains('live-line')) {
+    notch.classList.toggle('live-line', line);
+    if (line) renderRing();
+  }
+  if (dlActive()) return 'live';
   notch.classList.toggle('live-timer', timerLive && !musicLive && !dlActive());
   // Music and the focus timer at the same time: split into a pill plus a separate timer bubble.
   notch.classList.toggle('dual', timerLive && (musicLive || dlActive()));
@@ -628,6 +634,24 @@ function renderRing() {
   const known = media.has && dur > 1000;
   ring.classList.toggle('indeterminate', !known);
   if (known) $('mRingFg').style.strokeDashoffset = RING_LEN * (1 - clamp(curPos() / dur));
+  renderLine(known ? clamp(curPos() / dur) : null);
+}
+
+// "Line" look: a thin progress line inside the resting-size notch. It glides (2 s linear
+// transition, the same as the update step), and jumps without gliding when a song starts over.
+let lineAt = 0;
+function renderLine(f) {
+  const track = $('lnTrack');
+  const fill = $('lnFill');
+  track.classList.toggle('indeterminate', f === null);
+  if (f === null) return;
+  if (f < lineAt - 0.02) {
+    fill.style.transition = 'none';
+    fill.style.transform = `scaleX(${f})`;
+    void fill.offsetWidth;
+    fill.style.transition = '';
+  } else fill.style.transform = `scaleX(${f})`;
+  lineAt = f;
 }
 
 setInterval(() => {

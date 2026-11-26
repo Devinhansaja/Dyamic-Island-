@@ -27,6 +27,7 @@ const DEFAULTS = {
   settingsInNotch: true,
   liveActivity: true,
   compactArt: true,
+  liveStyle: 'line',          // music in the small notch: 'line' (resting size + progress line) | 'full' (art, name, ring)
   trackAlert: true,
   volumeHud: true,
   brightnessHud: true,
