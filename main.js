@@ -74,6 +74,10 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 // integrated GPU made every frame get copied to the NVIDIA GPU on screens it drives, which
 // made animations less smooth.
 
+// Don't keep Isle's install folder as the current directory: every program Isle starts would
+// inherit it (helper, update setup), and Windows can't replace a folder a running program sits in.
+try { process.chdir(os.homedir()); } catch { /* ignore */ }
+
 if (!app.requestSingleInstanceLock()) {
   app.quit();
   process.exit(0);
@@ -1163,7 +1167,7 @@ async function installUpdate() {
     await new Promise((res, rej) => out.end((e) => (e ? rej(e) : res())));
     if (total && got < total) throw new Error('download cut short');
     // Runs on its own (not tied to Isle), closes this Isle, installs, starts the new version.
-    spawn(file, ['/S'], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    spawn(file, ['/S'], { cwd: app.getPath('temp'), detached: true, stdio: 'ignore', windowsHide: true }).unref();
   } catch {
     update = { ...update, state: 'available', failed: true };
     sendUpdate();

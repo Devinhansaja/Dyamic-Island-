@@ -13,6 +13,9 @@ using System.Windows.Forms;
 static class IsleSetup {
   [STAThread]
   static int Main(string[] args) {
+    // Started by Isle's updater, this program can begin with Isle's own folder as its current
+    // directory, and Windows won't delete a folder a running program "stands in". Move out first.
+    try { Directory.SetCurrentDirectory(Path.GetTempPath()); } catch { }
     // /S: silent install (no windows); exit code 0 = installed.
     if (args.Length > 0 && args[0].Equals("/S", StringComparison.OrdinalIgnoreCase)) {
       try { Install(msg => { }); return 0; } catch (Exception ex) { Console.Error.WriteLine(ex.Message); return 1; }
@@ -81,7 +84,7 @@ static class IsleSetup {
       string log = Path.Combine(work, "install.log");
       var psi = new ProcessStartInfo("cmd.exe",
         "/c powershell.exe -NoProfile -ExecutionPolicy Bypass -File \"" + Path.Combine(files, "install.ps1") + "\" -Source \"" +
-        Path.Combine(files, "app") + "\" -NoStart > \"" + log + "\" 2>&1") { UseShellExecute = false, CreateNoWindow = true };
+        Path.Combine(files, "app") + "\" -NoStart > \"" + log + "\" 2>&1") { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = work };
       using (var p = Process.Start(psi)) {
         p.WaitForExit();
         if (p.ExitCode != 0) {

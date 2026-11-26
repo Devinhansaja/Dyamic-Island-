@@ -25,18 +25,34 @@ function Stop-Isle {
 }
 
 Write-Host 'Installing Isle...'
+# Never "stand in" the folder being replaced (Windows won't delete a folder that is some
+# program's current directory - this one's included).
+Set-Location $env:TEMP
 Stop-Isle
+# The helper's small guard program (it puts the Windows volume pop-up back, then exits) and
+# helper scripts from the old install can linger a moment.
+for ($i = 0; $i -lt 12 -and (Get-Process IsleGuard-1 -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 }
+Get-Process IsleGuard-1 -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -and $_.CommandLine -like "*$dest*" -and $_.ProcessId -ne $PID } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
-# 1. Files (replace an older install completely)
-if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
-New-Item -ItemType Directory -Force $dest | Out-Null
+# 1. Files: unpack next to the install, then replace the old files with them. The old folder is
+#    removed first (a few tries, something may still be letting go of it); if a file stays locked,
+#    the new files are mirrored over the old ones instead, so the install never ends half-done.
 if ($Zip) {
+    $unpacked = Join-Path $env:TEMP ('IsleUnpack-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     Add-Type -AssemblyName System.IO.Compression.FileSystem
-    [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $Zip).Path, $dest)
-} elseif ($Source) {
-    robocopy $Source $dest /E /NFL /NDL /NJH /NJS /NP | Out-Null
-    if ($LASTEXITCODE -ge 8) { throw "copy failed ($LASTEXITCODE)" }
-} else { throw 'Give -Zip or -Source' }
+    [IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $Zip).Path, $unpacked)
+    $Source = $unpacked
+} elseif (-not $Source) { throw 'Give -Zip or -Source' }
+for ($i = 0; $i -lt 10 -and (Test-Path $dest); $i++) {
+    try { Remove-Item $dest -Recurse -Force -ErrorAction Stop } catch { Start-Sleep -Milliseconds 600 }
+}
+New-Item -ItemType Directory -Force $dest | Out-Null
+robocopy $Source $dest /MIR /R:5 /W:1 /NFL /NDL /NJH /NJS /NP | Out-Null
+if ($LASTEXITCODE -ge 8) { throw "copy failed (robocopy $LASTEXITCODE)" }
+if ($unpacked) { Remove-Item $unpacked -Recurse -Force -ErrorAction SilentlyContinue }
 if (-not (Test-Path $exe)) { throw "Isle.exe missing after copy" }
 Copy-Item (Join-Path $PSScriptRoot 'uninstall.ps1') $dest -Force
 
