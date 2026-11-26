@@ -5,7 +5,11 @@ focus timer, eye breaks, battery rings for your devices, weather, clipboard hist
 
 ## Install
 
-Download **Isle-Setup.exe** from the [latest release](../../releases/latest) and run it.
+```powershell
+winget install Devinhansaja.Isle
+```
+
+or download **Isle-Setup.exe** from the [latest release](../../releases/latest) and run it.
 Isle installs for your Windows account only (no admin), adds itself to the Start menu and desktop,
 and starts with Windows. It updates itself from the releases here (Settings → App → Updates).
 Uninstall from Settings → Apps → Installed apps.

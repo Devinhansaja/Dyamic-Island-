@@ -4,7 +4,8 @@
 #   powershell -ExecutionPolicy Bypass -File tools\release.ps1 -Version 1.2.0 -Notes "What changed"
 param(
     [Parameter(Mandatory)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
-    [string]$Notes = ''
+    [string]$Notes = '',
+    [switch]$NoWinget   # don't send this version to winget
 )
 $ErrorActionPreference = 'Stop'
 $src = Split-Path $PSScriptRoot -Parent
@@ -42,3 +43,6 @@ git push origin HEAD --tags | Out-Host
 if (-not $Notes) { $Notes = "Isle $Version" }
 gh release create "v$Version" $setup --title "Isle $Version" --notes $Notes | Out-Host
 "Released Isle $Version"
+
+# 4. winget (Windows Package Manager): a pull request with the new version's manifests
+if (-not $NoWinget) { & (Join-Path $PSScriptRoot 'winget-submit.ps1') -Version $Version }
