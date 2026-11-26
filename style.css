@@ -510,6 +510,8 @@ html[data-theme=white] .v-welcome video { filter: invert(1); }   /* black writin
 .v-toast { width: 350px; height: 60px; display: flex; align-items: center; gap: 12px; padding: 6px 20px 0 14px; }
 .t-icon { flex: none; width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--card-2); }
 .t-icon svg { width: 19px; height: 19px; }
+/* a small video as the icon (charging) */
+.t-icon .t-vid { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 .t-icon.art { border-radius: 9px; }
 .t-text { flex: 1; min-width: 0; }
 .t-title, .t-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

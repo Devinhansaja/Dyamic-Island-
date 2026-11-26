@@ -1327,7 +1327,8 @@ function onPower(p) {
   const pct = Math.round(battery.level * 100);
   if (p.ac !== prev.ac && S.chargingAlert) {
     if (p.ac) {
-      showToast({ kind: 'battery', icon: icon('i-bolt'), iconColor: '#30d158', iconBg: 'rgba(48,209,88,.16)', title: 'Charging', sub: 'Power connected', right: pct + '%', rightClass: 'green', ms: 2800 });
+      // Icon: a small looping clip of a capsule filling with green liquid around a bolt.
+      showToast({ kind: 'battery', icon: '<video class="t-vid" src="assets/charging.mp4" autoplay muted loop playsinline></video>', iconBg: '#000', title: 'Charging', sub: 'Power connected', right: pct + '%', rightClass: 'green', ms: 3200 });
     } else {
       showToast({ kind: 'battery', icon: icon('i-plug'), title: 'On battery', sub: 'Charger disconnected', right: pct + '%', ms: 2800 });
     }
