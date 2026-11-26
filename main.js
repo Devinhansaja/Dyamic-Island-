@@ -1292,6 +1292,11 @@ app.whenReady().then(() => {
   findFfmpeg();
   // First update check a minute after start (not while Windows is still starting everything).
   setTimeout(() => { if (settings.autoUpdate && app.isPackaged) checkUpdate(); }, 60 * 1000);
+  // Setups downloaded by earlier updates are done with by now.
+  try {
+    const tmp = app.getPath('temp');
+    for (const f of fs.readdirSync(tmp)) if (/^Isle-Setup-[\d.]+\.exe$/i.test(f)) fs.rm(path.join(tmp, f), { force: true }, () => {});
+  } catch { /* ignore */ }
 });
 
 // On quit, let the helper put Windows "Do not disturb" back the way it was before killing it.
