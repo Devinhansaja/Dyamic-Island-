@@ -17,13 +17,14 @@ if (git tag --list "v$Version") { throw "Tag v$Version already exists" }
 
 # 1. Version number (package.json is what Isle reports as its version)
 $pkg = [IO.File]::ReadAllText((Join-Path $src 'package.json'))
-$pkg = [regex]::Replace($pkg, '"version"\s*:\s*"[^"]*"', "`"version`": `"$Version`"", 1)
+$verRe = [regex]'"version"\s*:\s*"[^"]*"'   # (an instance: its Replace takes a count)
+$pkg = $verRe.Replace($pkg, "`"version`": `"$Version`"", 1)
 [IO.File]::WriteAllText((Join-Path $src 'package.json'), $pkg, (New-Object Text.UTF8Encoding $false))
 # package-lock.json repeats it (top level and the root package)
 $lockPath = Join-Path $src 'package-lock.json'
 if (Test-Path $lockPath) {
     $lock = [IO.File]::ReadAllText($lockPath)
-    $lock = [regex]::Replace($lock, '"version"\s*:\s*"[^"]*"', "`"version`": `"$Version`"", 2)
+    $lock = $verRe.Replace($lock, "`"version`": `"$Version`"", 2)   # only the first two, not the dependencies'
     [IO.File]::WriteAllText($lockPath, $lock, (New-Object Text.UTF8Encoding $false))
 }
 
