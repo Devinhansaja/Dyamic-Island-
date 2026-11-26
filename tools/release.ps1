@@ -19,6 +19,13 @@ if (git tag --list "v$Version") { throw "Tag v$Version already exists" }
 $pkg = [IO.File]::ReadAllText((Join-Path $src 'package.json'))
 $pkg = [regex]::Replace($pkg, '"version"\s*:\s*"[^"]*"', "`"version`": `"$Version`"", 1)
 [IO.File]::WriteAllText((Join-Path $src 'package.json'), $pkg, (New-Object Text.UTF8Encoding $false))
+# package-lock.json repeats it (top level and the root package)
+$lockPath = Join-Path $src 'package-lock.json'
+if (Test-Path $lockPath) {
+    $lock = [IO.File]::ReadAllText($lockPath)
+    $lock = [regex]::Replace($lock, '"version"\s*:\s*"[^"]*"', "`"version`": `"$Version`"", 2)
+    [IO.File]::WriteAllText($lockPath, $lock, (New-Object Text.UTF8Encoding $false))
+}
 
 # 2. Setup
 $dist = Join-Path $src 'dist'
