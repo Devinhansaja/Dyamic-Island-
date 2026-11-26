@@ -71,9 +71,9 @@ foreach ($lnkPath in @(
 }
 
 # 3. Start with Windows. Windows only runs entries that Startup apps has marked enabled.
-# (Written the way Electron writes it, so Isle's own "Launch at login" check sees it as on;
-# --login tells Isle that Windows has just started, for the welcome.)
-Set-ItemProperty $runKey $runName ($(if ($exe -match ' ') { "`"$exe`"" } else { $exe }) + ' --login')
+# The path in quotes, then --login (Isle then knows Windows has just started, for the welcome).
+# Without the quotes, Windows skipped the entry at sign-in. Isle writes it the same way.
+Set-ItemProperty $runKey $runName "`"$exe`" --login"
 if (-not (Test-Path $approved)) { New-Item $approved -Force | Out-Null }
 Set-ItemProperty $approved $runName ([byte[]](2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)) -Type Binary
 # An older copy started from elsewhere (e.g. Downloads) used another entry name.

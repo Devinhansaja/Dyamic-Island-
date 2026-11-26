@@ -125,9 +125,28 @@ function saveSettings() {
   } catch { /* ignore */ }
 }
 
-// The startup entry starts Isle with --login, so Isle knows Windows has just started (welcome).
-const loginOpts = () => (app.isPackaged ? { args: ['--login'] } : { path: process.execPath, args: [path.resolve(__dirname), '--login'] });
+/* Start with Windows. Isle writes its own entry in Windows' Run list as `"<Isle.exe>" --login`
+   (--login tells Isle that Windows has just started, for the welcome). The path must be in
+   quotes when arguments follow: Electron's own login-item setting writes it without quotes,
+   and Windows silently skipped that entry at sign-in. */
+const RUN_KEY = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run';
+const RUN_NAME = `electron.app.${APP_NAME}`;
 const startedAtLogin = process.argv.includes('--login');
+const startupCommand = () => `"${process.execPath}" --login`;
+function readStartup() {
+  try {
+    const out = require('child_process').execFileSync('reg', ['query', RUN_KEY, '/v', RUN_NAME], { encoding: 'utf8', windowsHide: true });
+    const m = out.match(/REG_(?:EXPAND_)?SZ\s+(.*)$/m);
+    return m ? m[1].trim() : null;
+  } catch { return null; }
+}
+function writeStartup(on) {
+  const { execFileSync } = require('child_process');
+  try {
+    if (on) execFileSync('reg', ['add', RUN_KEY, '/v', RUN_NAME, '/t', 'REG_SZ', '/d', startupCommand(), '/f'], { windowsHide: true });
+    else execFileSync('reg', ['delete', RUN_KEY, '/v', RUN_NAME, '/f'], { windowsHide: true, stdio: 'ignore' });
+  } catch { /* ignore */ }
+}
 
 // Windows only starts a startup entry that is approved in its "Startup apps" list (Task Manager >
 // Startup apps / Settings > Apps > Startup). A new entry has no record there and was skipped.
@@ -138,13 +157,9 @@ function approveStartup(force = false) {
   if (process.platform !== 'win32') return;
   const { execFile } = require('child_process');
   const key = 'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run';
-  const items = (app.getLoginItemSettings(loginOpts()).launchItems || []).map((i) => i.name).filter(Boolean);
-  const names = items.length ? items : [`electron.app.${APP_NAME}`];
-  for (const name of names) {
-    const add = () => execFile('reg', ['add', key, '/v', name, '/t', 'REG_BINARY', '/d', '020000000000000000000000', '/f'], { windowsHide: true }, () => {});
-    if (force) add();
-    else execFile('reg', ['query', key, '/v', name], { windowsHide: true }, (err) => { if (err) add(); });
-  }
+  const add = () => execFile('reg', ['add', key, '/v', RUN_NAME, '/t', 'REG_BINARY', '/d', '020000000000000000000000', '/f'], { windowsHide: true }, () => {});
+  if (force) add();
+  else execFile('reg', ['query', key, '/v', RUN_NAME], { windowsHide: true }, (err) => { if (err) add(); });
 }
 
 function broadcast(channel, data) {
@@ -158,7 +173,7 @@ function setSetting(key, value) {
   settings[key] = value;
   saveSettings();
   if (key === 'launchAtLogin' && app.isPackaged) {
-    app.setLoginItemSettings({ ...loginOpts(), openAtLogin: !!value });
+    writeStartup(!!value);
     if (value) approveStartup(true);
   }
   if (key === 'trayIcon') updateTray();
@@ -1313,11 +1328,15 @@ app.whenReady().then(() => {
   // "Launch at login" follows Windows; but if it was on and this copy of Isle isn't registered
   // yet (e.g. after moving to Isle.exe), register this copy. Only the built Isle.exe does this:
   // a development copy must never add itself to Windows' startup apps.
+  // An entry in any older form (unquoted, no --login, another folder) is rewritten in the right one.
   if (app.isPackaged) {
-    const registered = app.getLoginItemSettings(loginOpts()).openAtLogin;
-    if (settings.launchAtLogin && !registered) app.setLoginItemSettings({ ...loginOpts(), openAtLogin: true });
-    else settings.launchAtLogin = registered;
-    if (settings.launchAtLogin) approveStartup();
+    const cur = readStartup();
+    const registered = !!cur && cur.toLowerCase().includes(process.execPath.toLowerCase());
+    if (settings.launchAtLogin || registered) {
+      if (cur !== startupCommand()) writeStartup(true);
+      settings.launchAtLogin = true;
+      approveStartup();
+    }
   }
   createIsland();
   updateTray();
