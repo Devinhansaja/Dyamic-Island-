@@ -79,6 +79,18 @@
           </div>
         </div>
         <div class="row">
+          <div class="label">Welcome<small>A hand-written "Welcome" in the notch when Windows starts, or also each time the PC wakes up</small></div>
+          <div class="seg" data-key="welcome">
+            <button data-value="start">At start</button>
+            <button data-value="wake">Start + wake</button>
+            <button data-value="off">Off</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Try the welcome</div>
+          <button class="btn" data-action="welcome">Show welcome</button>
+        </div>
+        <div class="row">
           <div class="label">Notch width<small>The small notch (idle, music, timer). What's inside fits itself to it.</small></div>
           <div class="range-wrap">
             <span class="range-val" data-for="notchWidth"></span>
@@ -342,7 +354,7 @@
           <button class="btn" data-action="pick-dl-dir">Change…</button>
         </div>
         <div class="row">
-          <div class="label">Offer to download copied video links<small>YouTube, Facebook, Instagram, TikTok, X, Reddit, Pinterest, Threads, Twitch, Vimeo and more</small></div>
+          <div class="label">Open copied video links in Downloads<small>Copy a YouTube, Facebook, Instagram, TikTok, X, Reddit, Pinterest, Threads, Twitch or Vimeo link and the notch opens Downloads with it ready to download</small></div>
           <input type="checkbox" class="switch" data-key="suggestDownloads">
         </div>
         <div class="row">

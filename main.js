@@ -39,7 +39,7 @@ const DEFAULTS = {
   islandDnd: false,           // collect notifications silently (badge only)
   hideWindowsNotifs: true,    // turn on Windows "Do not disturb" while Isle runs (restored on quit)
   downloadDir: '',            // '' = Downloads\Isle
-  suggestDownloads: true,     // offer to download when a video link is copied
+  suggestDownloads: true,     // a copied video link opens Downloads with it ready
   dlCookies: '',              // '' | 'firefox' | 'edge' | 'chrome' | 'brave': use that browser's sign-in
   chargingAlert: true,
   btAlert: true,              // pop-up when a Bluetooth device connects / disconnects
@@ -52,6 +52,7 @@ const DEFAULTS = {
   eyeBreak: true,             // 20-20-20 eye breaks in the notch
   eyeMinutes: 20,             // minutes of screen time between eye breaks
   autoUpdate: true,           // look for a new version on GitHub (at start and every 6 hours)
+  welcome: 'start',           // "Welcome" in the notch: 'start' (when Windows starts) | 'wake' (also after sleep) | 'off'
   weatherAuto: true,          // use Windows Location; weatherCity is the fallback / override
   weatherCity: '',
   weatherUnit: 'c',           // 'c' | 'f'
@@ -124,7 +125,9 @@ function saveSettings() {
   } catch { /* ignore */ }
 }
 
-const loginOpts = () => (app.isPackaged ? {} : { path: process.execPath, args: [path.resolve(__dirname)] });
+// The startup entry starts Isle with --login, so Isle knows Windows has just started (welcome).
+const loginOpts = () => (app.isPackaged ? { args: ['--login'] } : { path: process.execPath, args: [path.resolve(__dirname), '--login'] });
+const startedAtLogin = process.argv.includes('--login');
 
 // Windows only starts a startup entry that is approved in its "Startup apps" list (Task Manager >
 // Startup apps / Settings > Apps > Startup). A new entry has no record there and was skipped.
@@ -238,6 +241,8 @@ function createIsland() {
   win.webContents.on('did-finish-load', () => {
     setTimeout(replayState, 300);
     win.webContents.send('mode', { mode, app: fullscreenProc });
+    // Windows just started: say welcome (once; not again if the notch page reloads).
+    if (startedAtLogin && !welcomeShown) { welcomeShown = true; showWelcome(); }
   });
 
   screen.on('display-metrics-changed', positionSoon);
@@ -341,6 +346,30 @@ app.whenReady().then(() => {
   powerMonitor.on('unlock-screen', () => { eyeLocked = false; rest(); });
   powerMonitor.on('suspend', rest);
   powerMonitor.on('resume', rest);
+});
+
+/* ------------------------------------------------------------------ welcome
+   A hand-written "Welcome" in the notch when Windows starts (Isle started by its startup
+   entry), and with the 'wake' setting also when the PC wakes from sleep (once it's unlocked). */
+let welcomeShown = false;
+let wokeAt = 0;
+function showWelcome() {
+  if (settings.welcome === 'off' || !win || win.isDestroyed() || mode !== 'normal') return;
+  win.webContents.send('welcome');
+}
+app.whenReady().then(() => {
+  const { powerMonitor } = require('electron');
+  powerMonitor.on('resume', () => {
+    wokeAt = Date.now();
+    // No lock screen after waking: say it once the desktop is back.
+    setTimeout(() => { if (settings.welcome === 'wake' && !eyeLocked && wokeAt) { wokeAt = 0; showWelcome(); } }, 2500);
+  });
+  powerMonitor.on('unlock-screen', () => {
+    if (settings.welcome === 'wake' && wokeAt && Date.now() - wokeAt < 30 * 60 * 1000) {
+      wokeAt = 0;
+      setTimeout(showWelcome, 1200);
+    }
+  });
 });
 
 function startEyeBreak() {
@@ -1196,6 +1225,7 @@ ipcMain.on('action', (_e, a) => {
   if (a === 'reload' && win) win.reload();
   if (a === 'quit') app.quit();
   if (a === 'eye-break') startEyeBreak();
+  if (a === 'welcome' && win && !win.isDestroyed()) win.webContents.send('welcome');
 });
 ipcMain.on('eyes:done', () => endEyeBreak());
 

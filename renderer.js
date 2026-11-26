@@ -27,8 +27,8 @@ let clipFilter = 'all';
 /* ================================================================ state machine */
 
 function setState(s) {
-  // An eye break comes before everything; whatever else wants the notch waits until it ends.
-  if (ui.eyes && s !== 'eyes') return;
+  // An eye break / the welcome comes before everything; anything else waits until it ends.
+  if (ui.hold && s !== ui.hold) return;
   if (ui.state === s) return;
   ui.state = s;
   notch.dataset.state = s;
@@ -64,7 +64,7 @@ function settle() {
 }
 
 function expand(tab) {
-  if (ui.mode === 'game' || ui.eyes) return;
+  if (ui.mode === 'game' || ui.hold) return;
   if (tab) setTab(tab);
   clearTimeout(T.toast);
   if (ui.state === 'hud') return; // the HUD settles into expanded when it ends
@@ -94,7 +94,7 @@ api.onHover((h) => {
   clearTimeout(T.leave);
   // While it rings, the pill stays put so Answer / Decline are easy to hit. (On a call the notch
   // opens as usual; the open panel has the call's mute / end buttons in its top bar.)
-  if (ui.state === 'ring' || ui.eyes) return;
+  if (ui.state === 'ring' || ui.hold) return;
   // The volume / brightness HUD stays while the mouse is on it (to drag its bars), then goes.
   if (ui.state === 'hud') {
     clearTimeout(T.hud);
@@ -121,7 +121,7 @@ api.onMode(({ mode }) => {
 });
 
 panel.addEventListener('click', () => {
-  if (ui.eyes) return;
+  if (ui.hold) return;
   // "Update available" pop-up: a click downloads and installs it.
   if (ui.state === 'toast' && ui.toastKind === 'update') { api.installUpdate(); return; }
   if (ui.state === 'toast' && ui.toastKind === 'dl-suggest' && ui.pendingUrl) {
@@ -232,7 +232,7 @@ function setDisplay(id, v) {
 }
 
 function showHud(kind) {
-  if (ui.mode === 'game' || ui.eyes) return;
+  if (ui.mode === 'game' || ui.hold) return;
   const isVol = kind === 'volume';
   ui.hudKind = kind;
   const displays = isVol ? [] : brightDisplays();
@@ -320,7 +320,7 @@ panel.addEventListener('wheel', (e) => {
 /* ================================================================ toast */
 
 function showToast({ kind = null, icon: ic, iconColor = '', iconBg = '', artKey = null, logo = null, avatar = null, image = null, app = '', title, sub = '', right = '', rightClass = '', ms = 3200 }) {
-  if (ui.state === 'expanded' || ui.eyes) return false;
+  if (ui.state === 'expanded' || ui.hold) return false;
   if (ui.mode === 'game' && kind !== 'battery') return false; // don't interrupt games
   ui.toastKind = kind;
   ui.toastArtKey = artKey;
@@ -412,7 +412,7 @@ api.onNotif((n) => {
   renderBadge();
   if (S.islandDnd) return; // do not disturb: keep it in the list, no pop-up
   if (ui.state === 'toast' && ui.toastKind === 'notif') { notifQueue.push(n); return; }
-  if (ui.state === 'hud' || ui.eyes) { notifQueue.push(n); return; }   // shown after the HUD / eye break
+  if (ui.state === 'hud' || ui.hold) { notifQueue.push(n); return; }   // shown after the HUD / eye break / welcome
   notifToast(n);
 });
 
@@ -707,10 +707,10 @@ function eyeType(text) {
 }
 
 function startEyeBreak(seconds = 20) {
-  if (ui.eyes) return;
+  if (ui.hold) return;
   // Whatever the notch was doing stops: open panel, HUD, pop-ups (queued notifications come after).
   for (const k of ['hud', 'toast', 'enter', 'leave']) clearTimeout(T[k]);
-  ui.eyes = true;
+  ui.hold = 'eyes';
   setState('eyes');
   eyeT.total = seconds * 1000;
   eyeT.end = Date.now() + eyeT.total;
@@ -732,17 +732,49 @@ function startEyeBreak(seconds = 20) {
 }
 
 function endEyeBreak() {
-  if (!ui.eyes) return;
+  if (ui.hold !== 'eyes') return;
   clearInterval(eyeT.tick);
   clearTimeout(eyeT.type);
   $('eVideo').pause();
-  ui.eyes = false;
+  ui.hold = null;
   ui.state = 'eyes-done';
   api.eyesDone();
   // Back to normal: anything that waited (notifications, a call, the game strip) shows now.
   if (!nextNotif()) settle();
 }
 api.onEyes((d) => startEyeBreak((d && d.seconds) || 20));
+
+/* ================================================================ welcome (at Windows start) */
+
+// A hand-written "Welcome" plays in the notch once Windows has started (and, if chosen, after
+// waking up). It waits for the start-up warm-up to finish, so the two never overlap.
+const W = { wanted: false, ready: false, warming: false, timer: 0 };
+
+function startWelcome() {
+  if (ui.hold || ui.mode !== 'normal') return;
+  for (const k of ['hud', 'toast', 'enter', 'leave', 'autoDl']) clearTimeout(T[k]);
+  ui.hold = 'welcome';
+  setState('welcome');
+  const v = $('wVideo');
+  try { v.currentTime = 0; v.play().catch(() => endWelcome()); } catch { endWelcome(); return; }
+  clearTimeout(W.timer);
+  W.timer = setTimeout(endWelcome, 10000);   // in case the video never says it ended
+}
+function endWelcome() {
+  if (ui.hold !== 'welcome') return;
+  clearTimeout(W.timer);
+  $('wVideo').pause();
+  ui.hold = null;
+  ui.state = 'welcome-done';
+  if (!nextNotif()) settle();
+}
+// The clip fades to black over its last moment: close as that begins, so the notch never sits empty.
+$('wVideo').addEventListener('timeupdate', (e) => { const v = e.target; if (v.duration && v.currentTime >= v.duration - 0.45) endWelcome(); });
+$('wVideo').addEventListener('ended', endWelcome);
+api.onWelcome(() => {
+  if (!W.ready || W.warming) W.wanted = true;
+  else startWelcome();
+});
 
 /* ================================================================ device batteries */
 
@@ -1003,11 +1035,27 @@ api.onDownloadDone((d) => {
   });
 });
 
-// A video link was copied anywhere: offer to download it.
+// A video link was copied anywhere: the notch opens Downloads with the link filled in and its
+// video info loaded, ready to pick a quality. (Not over a game / full-screen video, not during
+// an eye break, and never over a link being typed or a download being set up.)
 api.onVideoLink((url) => {
-  if (ui.state === 'expanded' && ui.tab === 'downloads') { if (!$('dlUrl').value) dlFetch(url); return; }
-  ui.pendingUrl = url;
-  showToast({ kind: 'dl-suggest', icon: icon('i-download'), iconColor: '#fff', iconBg: 'var(--accent)', title: 'Video link copied', sub: 'Click to download it', ms: 6000 });
+  if (ui.mode !== 'normal' || ui.hold) return;
+  const typing = document.activeElement && document.activeElement.id === 'dlUrl';
+  if (typing || dlBusy) return;
+  if (ui.state === 'expanded' && ui.tab === 'downloads' && $('dlUrl').value.trim() === url) return;   // already there
+  clearTimeout(T.toast);
+  ui.pendingUrl = null;
+  setTab('downloads');
+  ui.state = 'auto-dl';   // (lets the panel open even from a pop-up or HUD)
+  setState('expanded');
+  dlFetch(url);
+  // Opened without the mouse: close again if it's left alone (the mouse never comes over it).
+  clearTimeout(T.autoDl);
+  T.autoDl = setTimeout(function closeIfIgnored() {
+    if (ui.state !== 'expanded' || ui.tab !== 'downloads') return;
+    if (ui.hovering || dlBusy || (document.activeElement && document.activeElement.id === 'dlUrl')) { T.autoDl = setTimeout(closeIfIgnored, 5000); return; }
+    setState(restingState());
+  }, 25000);
 });
 
 $('dlForm').addEventListener('submit', (e) => { e.preventDefault(); if (!dlBusy) dlFetch($('dlUrl').value); });
@@ -1734,7 +1782,12 @@ Promise.all([api.getSettings(), api.getClips(), api.getWeather(), api.getDevices
   renderMedia();
   setTab('home');
   reportRect();
-  setTimeout(prewarm, 2500);
+  W.ready = true;
+  W.warming = true;   // (a welcome asked for meanwhile waits for the warm-up)
+  setTimeout(() => prewarm().finally(() => {
+    W.warming = false;
+    if (W.wanted) { W.wanted = false; setTimeout(startWelcome, 300); }
+  }), 2500);
 });
 
 /* Warm-up: Chromium prepares a view's images and text the first time it's drawn, which made

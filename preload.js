@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('isle', {
   openSettings: (section) => ipcRenderer.send('open-settings', section),
   action: (a) => ipcRenderer.send('action', a),
   onEyes: on('eyes'),
+  onWelcome: on('welcome'),
   // updates
   getUpdate: () => ipcRenderer.invoke('update:get'),
   onUpdate: on('update'),
