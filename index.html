@@ -1,0 +1,382 @@
+<!doctype html>
+<html data-theme="black">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: https:; media-src 'self' blob: mediastream:; style-src 'self' 'unsafe-inline'">
+  <title>Isle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="notch" data-state="idle">
+  <div class="ear l"></div>
+  <div class="ear r"></div>
+
+  <!-- Split island: while music plays AND the focus timer runs, the timer gets its own bubble -->
+  <div class="bubble" id="bubble" title="Focus timer">
+    <svg class="b-ring" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/><circle class="fg" id="bRingFg" cx="10" cy="10" r="8"/></svg>
+    <span class="b-time" id="bTime"></span>
+  </div>
+
+  <div id="panel">
+    <!-- Liquid glass: live, refracted copy of whatever is behind the notch -->
+    <canvas class="glass-bg" id="glassCanvas"></canvas>
+    <div class="glass-sheen"></div>
+
+    <!-- Privacy indicators inside the notch: orange = microphone in use, green = camera in use -->
+    <div class="priv" id="priv"><i class="mic"></i><i class="cam"></i></div>
+
+    <!-- Live activity (music playing / focus timer running) -->
+    <section class="view v-live">
+      <div class="l-left">
+        <svg class="l-dl"><use href="#i-download"/></svg>
+        <span class="l-dl-pct" id="lDlPct"></span>
+        <div class="art l-art" id="lArt"><svg><use href="#i-note"/></svg></div>
+        <svg class="mini-ring" id="lRing" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8"/><circle class="fg" cx="10" cy="10" r="8"/></svg>
+      </div>
+      <!-- song name; long names scroll from right to left -->
+      <div class="l-mid">
+        <div class="l-title" id="lTitleBox"></div>
+      </div>
+      <div class="l-right">
+        <!-- Fills up as the song / video plays -->
+        <svg class="m-ring" id="mRing" viewBox="0 0 20 20"><circle cx="10" cy="10" r="7.5"/><circle class="fg" id="mRingFg" cx="10" cy="10" r="7.5"/></svg>
+        <span class="l-timer" id="lTimer"></span>
+      </div>
+    </section>
+
+    <!-- In-game performance strip -->
+    <section class="view v-game">
+      <span class="g"><b>CPU</b><em id="gCpu">–</em></span>
+      <span class="g"><b>GPU</b><em id="gGpu">–</em><em id="gTemp"></em></span>
+      <span class="g" id="gVramWrap"><b>VRAM</b><em id="gVram">–</em></span>
+      <span class="g"><b>RAM</b><em id="gRam">–</em></span>
+      <span class="g net"><em id="gDown">↓ –</em><em id="gUp">↑ –</em></span>
+    </section>
+
+    <!-- Incoming call -->
+    <section class="view v-ring">
+      <div class="r-avatar" id="rAvatar"></div>
+      <div class="r-text">
+        <div class="r-name" id="rName"></div>
+        <div class="r-sub" id="rSub"></div>
+      </div>
+      <button class="r-btn decline" id="rDecline" title="Decline"><svg><use href="#i-phone-down"/></svg></button>
+      <button class="r-btn answer" id="rAnswer" title="Answer"><svg><use href="#i-phone"/></svg></button>
+    </section>
+
+    <!-- On a call -->
+    <section class="view v-call">
+      <div class="c-icon" id="cIcon"><svg><use href="#i-phone"/></svg></div>
+      <div class="c-text"><b id="cApp"></b><span id="cTime">0:00</span></div>
+      <button class="c-btn mute" id="cMute" title="Mute microphone"><svg class="on"><use href="#i-mic"/></svg><svg class="off"><use href="#i-mic-off"/></svg></button>
+      <button class="c-btn end" id="cEnd" title="End call"><svg><use href="#i-phone-down"/></svg></button>
+    </section>
+
+    <!-- Focus timer card: the line around the edge shrinks as time runs out -->
+    <section class="view v-timer">
+      <svg class="t-edge" viewBox="0 0 360 118" preserveAspectRatio="none">
+        <path class="track" pathLength="100" d="M180 4.5H341.5A14 14 0 0 1 355.5 18.5V82A31.5 31.5 0 0 1 324 113.5H36A31.5 31.5 0 0 1 4.5 82V18.5A14 14 0 0 1 18.5 4.5Z"/>
+        <path class="fg" id="tEdge" pathLength="100" d="M180 4.5H341.5A14 14 0 0 1 355.5 18.5V82A31.5 31.5 0 0 1 324 113.5H36A31.5 31.5 0 0 1 4.5 82V18.5A14 14 0 0 1 18.5 4.5Z"/>
+      </svg>
+      <button class="t-btn play" id="tPlay" title="Pause / resume"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
+      <div class="t-mid">
+        <div class="t-end"><svg><use href="#i-bell"/></svg><span id="tEnd"></span></div>
+        <div class="t-time" id="tTime">25:00</div>
+        <div class="t-label">Focus</div>
+      </div>
+      <button class="t-btn stop" id="tStop" title="Stop timer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/></svg></button>
+    </section>
+
+    <!-- Eye break (20-20-20): animated eyes + typed advice; the bar empties over 20 s -->
+    <section class="view v-eyes">
+      <div class="e-video"><video id="eVideo" src="assets/eyes.mp4" muted loop playsinline preload="auto"></video></div>
+      <div class="e-text">
+        <div class="e-label">Eye break<span id="eLeft">20s</span></div>
+        <div class="e-type"><span id="eType"></span><i class="e-caret"></i></div>
+      </div>
+      <div class="e-bar"><b id="eBar"></b></div>
+    </section>
+
+    <!-- Volume / brightness HUD -->
+    <section class="view v-hud">
+      <div class="hud-icon" id="hudIcon"></div>
+      <div class="hud-track" id="hudTrack">
+        <div class="segs" id="hudSegs"></div>
+        <div class="hud-bar"><b id="hudFill"></b></div>
+      </div>
+      <div class="hud-pct" id="hudPct"></div>
+      <!-- brightness with more than one display on: one row per display -->
+      <div class="hud-rows" id="hudRows"></div>
+    </section>
+
+    <!-- Short notifications -->
+    <section class="view v-toast">
+      <div class="t-icon" id="tIcon"></div>
+      <div class="t-text">
+        <div class="t-app" id="tApp"></div>
+        <div class="t-title" id="tTitle"></div>
+        <div class="t-sub" id="tSub"></div>
+      </div>
+      <div class="t-right" id="tRight"></div>
+    </section>
+
+    <!-- Expanded -->
+    <section class="view v-expanded">
+      <header class="topbar">
+        <div class="side quick">
+          <button class="q-btn dnd" id="qDnd" title="Do not disturb: no notification pop-ups"><svg><use href="#i-moon"/></svg></button>
+          <button class="q-btn silent" id="qSilent" title="Silent: mute the PC"><svg><use href="#i-spk-off"/></svg></button>
+          <span class="priv-label" id="privLabel"></span>
+          <!-- on a call: timer + mute + end, so the call stays in reach while the panel is open -->
+          <span class="q-call" id="qCall">
+            <b id="qCallTime">0:00</b>
+            <button class="q-btn call-mute" id="qCallMute" title="Mute microphone"><svg class="on"><use href="#i-mic"/></svg><svg class="off"><use href="#i-mic-off"/></svg></button>
+            <button class="q-btn call-end" id="qCallEnd" title="End call"><svg><use href="#i-phone-down"/></svg></button>
+          </span>
+        </div>
+        <nav class="tabs">
+          <button class="tab" data-tab="home" title="Home"><svg><use href="#i-home"/></svg></button>
+          <button class="tab" data-tab="widgets" title="Widgets"><svg><use href="#i-grid"/></svg></button>
+          <button class="tab" data-tab="downloads" title="Download videos"><svg><use href="#i-download"/></svg><span class="tab-badge dl" id="dlBadge"></span></button>
+          <button class="tab" data-tab="notifs" title="Notifications"><svg><use href="#i-bell"/></svg><span class="tab-badge" id="notifBadge"></span></button>
+          <button class="tab" data-tab="clips" title="Clipboard"><svg><use href="#i-clip"/></svg></button>
+          <span class="tab-sep"></span>
+          <button class="tab gear" id="gear" title="Settings"><svg><use href="#i-gear"/></svg></button>
+        </nav>
+        <div class="side right"><span class="top-batt" id="topBatt"></span></div>
+      </header>
+
+      <div class="pages">
+
+        <!-- Home: compact media player + weather + device batteries -->
+        <div class="page p-home" data-page="home">
+          <div class="h-card media" id="musicPage">
+            <div class="mp">
+              <div class="mp-top">
+                <div class="mp-art-wrap">
+                  <div class="art mp-art" id="mArt"><svg><use href="#i-note"/></svg></div>
+                  <div class="mp-logo" id="mLogo"></div>
+                </div>
+                <div class="mp-info">
+                  <div class="mp-title" id="mTitle"></div>
+                  <div class="mp-artist" id="mArtist"></div>
+                <div class="mp-buttons">
+                  <button data-cmd="prev" title="Previous"><svg><use href="#i-prev"/></svg></button>
+                  <button data-cmd="play" class="play" title="Play / Pause">
+                    <svg class="i-play"><use href="#i-play"/></svg>
+                    <svg class="i-pause"><use href="#i-pause"/></svg>
+                  </button>
+                  <button data-cmd="next" title="Next"><svg><use href="#i-next"/></svg></button>
+                </div>
+                </div>
+              </div>
+              <div class="mp-prog">
+                <span class="time" id="mPos">0:00</span>
+                <div class="scrub" id="scrub"><div class="s-track"><div class="s-fill" id="sFill"></div></div></div>
+                <span class="time" id="mRem">-0:00</span>
+              </div>
+            </div>
+            <div class="mp-empty">
+              <svg><use href="#i-note"/></svg>
+              <span>Nothing playing</span>
+            </div>
+          </div>
+
+          <div class="h-card hw" id="homeWeather">
+            <div class="hw-top">
+              <div class="hw-icon" id="hwIcon"></div>
+              <div class="hw-temp" id="hwTemp">–</div>
+            </div>
+            <div class="hw-cond" id="hwCond"></div>
+            <div class="hw-hilo" title="Today's high and low"><span class="hi" id="hwHi"></span><span class="lo" id="hwLo"></span></div>
+            <div class="hw-city" id="hwCity"></div>
+            <div class="hw-empty" id="hwMsg">Weather</div>
+          </div>
+
+          <div class="h-card devs">
+            <div class="dev-list" id="devList"></div>
+          </div>
+        </div>
+
+        <!-- Widgets -->
+        <div class="page p-widgets" data-page="widgets">
+          <div class="w-card clock">
+            <div class="w-label" id="clkLabel">Local time</div>
+            <div class="clk-time"><b id="clkTime">--:--</b><i id="clkSec"></i><span id="clkAmPm"></span></div>
+            <div class="clk-date" id="clkDate"></div>
+            <div class="clk-bar" title="How much of today has passed"><b id="clkDay"></b></div>
+          </div>
+
+          <div class="w-card weather" id="weather">
+            <div class="w-label" id="wxCity">Weather</div>
+            <div class="wx-top">
+              <div class="wx-icon" id="wxIcon"></div>
+              <div class="wx-temp" id="wxTemp">–</div>
+            </div>
+            <div class="wx-cond" id="wxCond"></div>
+            <div class="wx-meta" id="wxMeta"></div>
+            <div class="wx-empty">
+              <span id="wxMsg">Add your city to see the weather</span>
+              <button id="wxSet">Set city</button>
+            </div>
+          </div>
+
+          <div class="w-card cal">
+            <div class="cal-top">
+              <span class="cal-day" id="calDay"></span>
+              <span class="cal-meta"><b id="calWd"></b><span id="calMon"></span></span>
+              <span class="cal-week" id="calWeek"></span>
+            </div>
+            <div class="week" id="week"></div>
+          </div>
+
+          <div class="w-card focus" id="focus">
+            <div class="f-ring">
+              <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="28"/><circle class="fg" id="fRing" cx="32" cy="32" r="28"/></svg>
+              <span id="fTime">25:00</span>
+            </div>
+            <div class="f-side">
+              <b>Focus</b>
+              <span class="f-sub" id="fSub">25 min session</span>
+              <div class="f-ctrl">
+                <button class="round main" id="fPlay" title="Start / Pause"><svg class="i-play"><use href="#i-play"/></svg><svg class="i-pause"><use href="#i-pause"/></svg></button>
+                <button class="round" id="fMinus" title="−5 min">−</button>
+                <button class="round" id="fPlus" title="+5 min">+</button>
+                <button class="round stop" id="fStop" title="Stop timer"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="w-card sys">
+            <div class="stat"><span>CPU</span><div class="bar"><b id="cpuBar"></b></div><em id="cpuVal">–</em></div>
+            <div class="stat"><span>RAM</span><div class="bar"><b id="ramBar"></b></div><em id="ramVal">–</em></div>
+            <div class="stat"><span>BAT</span><div class="bar batt"><b id="batBar"></b></div><em id="batVal">–</em></div>
+            <div class="stat"><span>DISK</span><div class="bar"><b id="diskBar"></b></div><em id="diskVal">–</em></div>
+            <div class="sys-foot" id="sysFoot"></div>
+          </div>
+        </div>
+
+        <!-- Video downloads -->
+        <div class="page p-dl" data-page="downloads">
+          <form class="dl-bar" id="dlForm" autocomplete="off">
+            <svg class="dl-bar-icon"><use href="#i-link"/></svg>
+            <input id="dlUrl" placeholder="Paste a video link: YouTube, Facebook, TikTok, Instagram, X, Reddit…" spellcheck="false">
+            <button type="button" class="dl-paste" id="dlPaste">Paste</button>
+            <button type="submit" class="dl-go" id="dlGo">Get</button>
+          </form>
+
+          <div class="dl-info" id="dlInfo">
+            <div class="dl-thumb" id="dlThumb"></div>
+            <div class="dl-meta">
+              <div class="dl-title" id="dlTitle"></div>
+              <div class="dl-sub" id="dlSub"></div>
+              <div class="dl-opts" id="dlOpts"></div>
+            </div>
+          </div>
+          <div class="dl-msg" id="dlMsg"></div>
+
+          <div class="dl-head">
+            <span>Downloads</span>
+            <div>
+              <button class="ghost text" id="dlFolder">Open folder</button>
+              <button class="ghost text" id="dlClear">Clear</button>
+            </div>
+          </div>
+          <div class="dl-list" id="dlList"></div>
+        </div>
+
+        <!-- Notifications -->
+        <div class="page p-notifs" data-page="notifs">
+          <div class="sub-head">
+            <span id="notifLabel">Notifications</span>
+            <button class="ghost text" id="notifClear">Clear all</button>
+          </div>
+          <div class="n-list" id="notifList"></div>
+          <div class="empty-state small" id="notifEmpty">
+            <svg><use href="#i-bell"/></svg>
+            <div><b id="notifEmptyTitle">No notifications</b><span id="notifEmptyText">New ones from your apps show up here.</span></div>
+          </div>
+        </div>
+
+        <!-- Clipboard -->
+        <div class="page p-clips" data-page="clips">
+          <div class="sub-head">
+            <div class="chips" id="clipChips">
+              <button class="chip on" data-f="all">All</button>
+              <button class="chip" data-f="text">Text</button>
+              <button class="chip" data-f="link">Links</button>
+              <button class="chip" data-f="image">Images</button>
+            </div>
+            <button class="ghost text" id="clipClear">Clear</button>
+          </div>
+          <div class="h-list" id="clipList"></div>
+          <div class="empty-state small">
+            <svg><use href="#i-clip"/></svg>
+            <div><b>Nothing copied yet</b><span>Text, links and images you copy show up here.</span></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </div>
+</div>
+
+<!-- Liquid glass refraction: pixels near the edges are pulled inward like a lens -->
+<svg width="0" height="0" style="position:absolute">
+  <filter id="lg-refract" x="0" y="0" width="1" height="1" primitiveUnits="objectBoundingBox" color-interpolation-filters="sRGB">
+    <feImage id="lgMap" x="0" y="0" width="1" height="1" preserveAspectRatio="none" result="map"/>
+    <feDisplacementMap in="SourceGraphic" in2="map" scale="0.07" xChannelSelector="R" yChannelSelector="G"/>
+  </filter>
+</svg>
+
+<!-- Icon sprite -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="i-phone" viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></symbol>
+    <symbol id="i-phone-down" viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .4-.23.74-.56.9a11.5 11.5 0 0 0-2.66 1.85.99.99 0 0 1-1.4-.01L.29 13.08a1 1 0 0 1 0-1.41C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67a1 1 0 0 1 0 1.41l-2.48 2.48a1 1 0 0 1-1.4.01 11.3 11.3 0 0 0-2.67-1.85 1 1 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></symbol>
+    <symbol id="i-mic-off" viewBox="0 0 24 24"><path d="M19 11h-1.7c0 .74-.16 1.43-.43 2.05l1.23 1.23A6.9 6.9 0 0 0 19 11zM15 11.16V5a3 3 0 0 0-5.98-.3zM4.27 3 3 4.27l6 6V11a3 3 0 0 0 4.55 2.56l1.66 1.66A5.3 5.3 0 0 1 12 16.3 5.2 5.2 0 0 1 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28a6.9 6.9 0 0 0 2.54-.9L19.73 21 21 19.73z"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M11 3h2v9.2l3.3-3.3 1.4 1.4L12 16l-5.7-5.7 1.4-1.4 3.3 3.3zM4 18h16v2.5H4z"/></symbol>
+    <symbol id="i-folder2" viewBox="0 0 24 24"><path d="M3 6.5A1.5 1.5 0 0 1 4.5 5h4.6l2 2h8.4A1.5 1.5 0 0 1 21 8.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 17.5z"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1z"/></symbol>
+    <symbol id="i-spk-off" viewBox="0 0 24 24"><path d="M3 9.5v5h4l5 4.5v-14L7 9.5zm12.6-.1 1.4-1.4 2 2 2-2 1.4 1.4-2 2 2 2-1.4 1.4-2-2-2 2-1.4-1.4 2-2z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><path d="M12 2a3.5 3.5 0 0 0-3.5 3.5v6a3.5 3.5 0 0 0 7 0v-6A3.5 3.5 0 0 0 12 2zM6 11.5h-2a8 8 0 0 0 7 7.9V22h2v-2.6a8 8 0 0 0 7-7.9h-2a6 6 0 0 1-12 0z"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><path d="M4 6h11a2 2 0 0 1 2 2v1.6l4-2.6v10l-4-2.6V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v4.2L3.6 16.6c-.4.7.1 1.4.9 1.4h15c.8 0 1.3-.7.9-1.4l-1.9-3.4V9A6.5 6.5 0 0 0 12 2.5zM9.2 19.5a2.9 2.9 0 0 0 5.6 0z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M12 3.2 3 10.4V20a1 1 0 0 0 1 1h5v-6h6v6h5a1 1 0 0 0 1-1v-9.6z"/></symbol>
+    <symbol id="d-laptop" viewBox="0 0 24 24"><path d="M5 5h14a1 1 0 0 1 1 1v9H4V6a1 1 0 0 1 1-1zm1 2v6h12V7zM2 16.5h20l-1 2.5H3z"/></symbol>
+    <symbol id="d-headphones" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h2v-8H5v-1a7 7 0 0 1 14 0v1h-3v8h2a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/></symbol>
+    <symbol id="d-gamepad" viewBox="0 0 24 24"><path d="M7 6h10a5 5 0 0 1 4.9 6l-.9 4.3A2.6 2.6 0 0 1 16.4 17l-2-2H9.6l-2 2A2.6 2.6 0 0 1 3 16.3L2.1 12A5 5 0 0 1 7 6zm0 3v1.5H5.5V12H7v1.5h1.5V12H10v-1.5H8.5V9zm9.5 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-2 2.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></symbol>
+    <symbol id="d-mouse" viewBox="0 0 24 24"><path d="M11 2.1V10H5V9a7 7 0 0 1 6-6.9zm2 0A7 7 0 0 1 19 9v1h-6zM5 12h14v3a7 7 0 0 1-14 0z"/></symbol>
+    <symbol id="d-keyboard" viewBox="0 0 24 24"><path d="M3 6h18a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm2 3v2h2V9zm4 0v2h2V9zm4 0v2h2V9zm4 0v2h2V9zM5 13v2h2v-2zm4 0v2h6v-2zm8 0v2h2v-2z"/></symbol>
+    <symbol id="d-watch" viewBox="0 0 24 24"><path d="M8 2h8l1 4a6 6 0 0 1 0 12l-1 4H8l-1-4A6 6 0 0 1 7 6zm4 6v4.4l3 1.8.8-1.3-2.3-1.4V8z"/></symbol>
+    <symbol id="d-phone" viewBox="0 0 24 24"><path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 3v13h8V5zm3 14.5v1h2v-1z"/></symbol>
+    <symbol id="d-monitor" viewBox="0 0 24 24"><path d="M3 4h18a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1h-7v2h3v2H7v-2h3v-2H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v9h16V6z"/></symbol>
+    <symbol id="d-earbuds"viewBox="0 0 24 24"><path d="M6.5 3A3.5 3.5 0 0 0 3 6.5v.6A3.4 3.4 0 0 0 6.4 10.5c.4 0 .6.3.6.7V19a2 2 0 0 0 4 0V7.2A4.2 4.2 0 0 0 6.5 3zm11 0A4.2 4.2 0 0 0 13 7.2V19a2 2 0 0 0 4 0v-7.8c0-.4.2-.7.6-.7A3.4 3.4 0 0 0 21 7.1v-.6A3.5 3.5 0 0 0 17.5 3z"/></symbol>
+    <symbol id="d-tablet" viewBox="0 0 24 24"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2.5V18h12V4.5zm5 15v1h2v-1z"/></symbol>
+    <symbol id="d-speaker"viewBox="0 0 24 24"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm5 9a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0-6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18.5a3 3 0 1 1-2-2.83V5.5l12-2.5v12.5a3 3 0 1 1-2-2.83V7.6l-8 1.7z"/></symbol>
+    <symbol id="i-clip" viewBox="0 0 24 24"><path d="M9 3h6a1 1 0 0 1 1 1v1h2.5A1.5 1.5 0 0 1 20 6.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5v-13A1.5 1.5 0 0 1 5.5 5H8V4a1 1 0 0 1 1-1zm1 2v1h4V5zM8 11h8v1.6H8zm0 4h6v1.6H8z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M10.3 2h3.4l.5 2.6c.6.2 1.2.5 1.7.9l2.5-.9 1.7 2.9-2 1.8a7 7 0 0 1 0 1.9l2 1.8-1.7 2.9-2.5-.9c-.5.4-1.1.7-1.7.9l-.5 2.6h-3.4l-.5-2.6a6.6 6.6 0 0 1-1.7-.9l-2.5.9-1.7-2.9 2-1.8a7 7 0 0 1 0-1.9l-2-1.8 1.7-2.9 2.5.9c.5-.4 1.1-.7 1.7-.9zM12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" transform="translate(0 1.5)"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M11.5 6v12L3 12zm9.5 0v12l-8.5-6z"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M12.5 6v12L21 12zM3 6v12l8.5-6z"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.6v14.8c0 .8.9 1.3 1.6.8l11.3-7.4a1 1 0 0 0 0-1.6L8.6 3.8C7.9 3.3 7 3.8 7 4.6z"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="6" y="4" width="4.2" height="16" rx="1.2"/><rect x="13.8" y="4" width="4.2" height="16" rx="1.2"/></symbol>
+    <symbol id="i-spk" viewBox="0 0 24 24"><path d="M3 9.5v5h4l5 4.5v-14L7 9.5z"/></symbol>
+    <symbol id="i-w1" viewBox="0 0 24 24"><path d="M14.5 8.8a4.6 4.6 0 0 1 0 6.4l-1.1-1.1a3 3 0 0 0 0-4.2z"/></symbol>
+    <symbol id="i-w2" viewBox="0 0 24 24"><path d="M17 6.3a8.2 8.2 0 0 1 0 11.4l-1.1-1.1a6.6 6.6 0 0 0 0-9.2z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="m15 9.4 1.1-1.1 2.1 2.1 2.1-2.1 1.1 1.1-2.1 2.1 2.1 2.1-1.1 1.1-2.1-2.1-2.1 2.1L15 13.6l2.1-2.1z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M11.1 1.5h1.8v3h-1.8zm0 18h1.8v3h-1.8zM1.5 11.1h3v1.8h-3zm18 0h3v1.8h-3zM4 5.3 5.3 4l2.1 2.1-1.3 1.3zm12.6 12.6 1.3-1.3 2.1 2.1-1.3 1.3zM4 18.7l2.1-2.1 1.3 1.3L5.3 20zM16.6 6.1l2.1-2.1L20 5.3l-2.1 2.1z"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13.5 2 4.5 13.5h6.5l-1 8.5 9-11.5h-6.5z"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M16 7V3h-2v4h-4V3H8v4H7v5.5a5 5 0 0 0 4 4.9V21h2v-3.6a5 5 0 0 0 4-4.9V7z"/></symbol>
+    <symbol id="i-batlow" viewBox="0 0 24 24"><path d="M15.7 4H14V2h-4v2H8.3C7.6 4 7 4.6 7 5.3v15.4c0 .7.6 1.3 1.3 1.3h7.4c.7 0 1.3-.6 1.3-1.3V5.3C17 4.6 16.4 4 15.7 4zM13 18h-2v-2h2zm0-4h-2V8h2z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m9.5 16.2-4.2-4.2-1.4 1.4 5.6 5.6 11-11-1.4-1.4z"/></symbol>
+    <symbol id="i-link" viewBox="0 0 24 24"><path d="M10.6 13.4a1 1 0 0 1 0-1.4l3.5-3.5a1 1 0 1 1 1.4 1.4L12 13.4a1 1 0 0 1-1.4 0zM8.5 19a4.5 4.5 0 0 1-3.2-7.7l2.1-2.1 1.4 1.4-2.1 2.1a2.5 2.5 0 0 0 3.5 3.5l2.1-2.1 1.4 1.4-2.1 2.1A4.5 4.5 0 0 1 8.5 19zm8.1-4.2-1.4-1.4 2.1-2.1a2.5 2.5 0 0 0-3.5-3.5l-2.1 2.1-1.4-1.4 2.1-2.1a4.5 4.5 0 0 1 6.4 6.4z"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M4 5h16v2H4zm0 4h16v2H4zm0 4h16v2H4zm0 4h10v2H4z"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 12.5V18h14v-3l-4-4-5 5-2-2zM8.5 10a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z"/></symbol>
+  </defs>
+</svg>
+
+<script src="renderer.js"></script>
+</body>
+</html>

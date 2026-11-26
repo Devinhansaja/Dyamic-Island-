@@ -1,0 +1,404 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+  <title>Isle Settings</title>
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <header class="titlebar"><span id="title">General</span></header>
+
+  <nav class="toolbar">
+    <button class="tb" data-sec="general"><svg viewBox="0 0 24 24"><use href="#s-gear"/></svg><span>General</span></button>
+    <button class="tb" data-sec="media"><svg viewBox="0 0 24 24"><use href="#s-media"/></svg><span>Media</span></button>
+    <button class="tb" data-sec="huds"><svg viewBox="0 0 24 24"><use href="#s-hud"/></svg><span>HUDs</span></button>
+    <button class="tb" data-sec="gaming"><svg viewBox="0 0 24 24"><use href="#s-game"/></svg><span>Gaming</span></button>
+    <button class="tb" data-sec="widgets"><svg viewBox="0 0 24 24"><use href="#s-widgets"/></svg><span>Widgets</span></button>
+    <button class="tb" data-sec="battery"><svg viewBox="0 0 24 24"><use href="#s-bell"/></svg><span>Alerts</span></button>
+    <button class="tb" data-sec="clipboard"><svg viewBox="0 0 24 24"><use href="#s-clip"/></svg><span>Clipboard</span></button>
+    <button class="tb" data-sec="about"><svg viewBox="0 0 24 24"><use href="#s-info"/></svg><span>About</span></button>
+  </nav>
+
+  <main>
+    <!-- General -->
+    <section data-sec="general">
+      <h2>Appearance</h2>
+      <div class="themes" id="themes">
+        <button class="theme-card" data-value="black">
+          <span class="preview black"><i></i></span>
+          <span>Black</span>
+        </button>
+        <button class="theme-card" data-value="white">
+          <span class="preview white"><i></i></span>
+          <span>White</span>
+        </button>
+        <button class="theme-card" data-value="glass">
+          <span class="preview glass"><i></i></span>
+          <span>Liquid Glass</span>
+        </button>
+      </div>
+      <div class="group glass-amount" data-needs-value="theme=glass">
+        <div class="row">
+          <div class="label">Glass<small>Less: frosted and easier to read · More: clearer, see-through</small></div>
+          <div class="range-wrap">
+            <span class="range-ends">Less</span>
+            <input type="range" data-key="glassAmount" min="0" max="100" step="5" data-live="1">
+            <span class="range-ends">More</span>
+          </div>
+        </div>
+      </div>
+      <p class="note">Liquid Glass blurs and bends whatever is behind the notch. To do that it reads the screen locally (nothing leaves your PC), and the notch is hidden from screenshots and screen recordings.</p>
+
+      <h2>Accent color</h2>
+      <div class="group">
+        <div class="row">
+          <div class="swatches" id="swatches">
+            <button class="swatch" data-value="#5e8bff" style="--c:#5e8bff"></button>
+            <button class="swatch" data-value="#bf5af2" style="--c:#bf5af2"></button>
+            <button class="swatch" data-value="#ff375f" style="--c:#ff375f"></button>
+            <button class="swatch" data-value="#ff453a" style="--c:#ff453a"></button>
+            <button class="swatch" data-value="#ff9f0a" style="--c:#ff9f0a"></button>
+            <button class="swatch" data-value="#ffd60a" style="--c:#ffd60a"></button>
+            <button class="swatch" data-value="#30d158" style="--c:#30d158"></button>
+            <button class="swatch" data-value="#64d2ff" style="--c:#64d2ff"></button>
+            <button class="swatch" data-value="#8e8e93" style="--c:#8e8e93"></button>
+          </div>
+          <label class="custom-color" title="Custom color"><input type="color" id="customColor"></label>
+        </div>
+      </div>
+
+      <h2>Notch</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">When idle<small>How the notch looks when nothing is happening</small></div>
+          <div class="seg" data-key="idleStyle">
+            <button data-value="thin">Thin</button>
+            <button data-value="small">Small</button>
+            <button data-value="hidden">Hidden</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Notch width<small>The small notch (idle, music, timer). What's inside fits itself to it.</small></div>
+          <div class="range-wrap">
+            <span class="range-val" data-for="notchWidth"></span>
+            <input type="range" data-key="notchWidth" min="180" max="340" step="10" data-fmt="px" data-live="1">
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Hide during full-screen video<small>YouTube, Netflix, VLC and other players</small></div>
+          <input type="checkbox" class="switch" data-key="hideFullscreen">
+        </div>
+        <div class="row">
+          <div class="label">Open on hover<small>Otherwise, click the notch to open it</small></div>
+          <input type="checkbox" class="switch" data-key="expandOnHover">
+        </div>
+        <div class="row" data-needs="expandOnHover">
+          <div class="label">Minimum hover duration</div>
+          <div class="range-wrap">
+            <span class="range-val" data-for="hoverDelay"></span>
+            <input type="range" data-key="hoverDelay" min="0" max="1" step="0.05" data-fmt="s">
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Settings icon in notch</div>
+          <input type="checkbox" class="switch" data-key="settingsInNotch">
+        </div>
+      </div>
+
+      <h2>App</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Launch at login</div>
+          <input type="checkbox" class="switch" data-key="launchAtLogin">
+        </div>
+        <div class="row">
+          <div class="label">Tray icon</div>
+          <input type="checkbox" class="switch" data-key="trayIcon">
+        </div>
+        <div class="row">
+          <div class="label">Update automatically<small>Looks for a new version on GitHub when Isle starts and every 6 hours</small></div>
+          <input type="checkbox" class="switch" data-key="autoUpdate">
+        </div>
+        <div class="row">
+          <div class="label">Updates<small id="updStatus">Isle is up to date</small></div>
+          <button class="btn" id="updBtn">Check for updates</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Media -->
+    <section data-sec="media">
+      <h2>Live activity</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Show music in the notch<small>Album art and a moving equalizer while something plays</small></div>
+          <input type="checkbox" class="switch" data-key="liveActivity">
+        </div>
+        <div class="row" data-needs="liveActivity">
+          <div class="label">Album art in compact view</div>
+          <input type="checkbox" class="switch" data-key="compactArt">
+        </div>
+        <div class="row">
+          <div class="label">Announce new tracks<small>A short "now playing" pop-up when the song changes</small></div>
+          <input type="checkbox" class="switch" data-key="trackAlert">
+        </div>
+      </div>
+      <p class="note">Works with any app that shows up in the Windows media controls: Spotify, YouTube in Chrome, Edge or Brave, Apple Music, VLC and more.</p>
+    </section>
+
+    <!-- HUDs -->
+    <section data-sec="huds">
+      <h2>On-screen displays</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Volume HUD</div>
+          <input type="checkbox" class="switch" data-key="volumeHud">
+        </div>
+        <div class="row" data-needs="volumeHud">
+          <div class="label">Hide the Windows volume &amp; brightness pop-up<small>Only the notch's HUD shows while Isle runs (Windows' own bar comes back in games and full-screen video)</small></div>
+          <input type="checkbox" class="switch" data-key="hideWindowsVolume">
+        </div>
+        <div class="row">
+          <div class="label">Brightness HUD<small>Built-in laptop screens only</small></div>
+          <input type="checkbox" class="switch" data-key="brightnessHud">
+        </div>
+        <div class="row">
+          <div class="label">Style</div>
+          <div class="seg" data-key="hudStyle">
+            <button data-value="segmented">Segmented</button>
+            <button data-value="bar">Bar</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Scroll on the notch to change volume</div>
+          <input type="checkbox" class="switch" data-key="scrollVolume">
+        </div>
+      </div>
+      <p class="note">The Windows volume pop-up comes back during games and full-screen video, and whenever Isle isn't running. The brightness pop-up can't be hidden: your laptop's driver draws it.</p>
+    </section>
+
+    <!-- Gaming -->
+    <section data-sec="gaming">
+      <h2>While a game is full-screen</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Notch shows</div>
+          <div class="seg" data-key="gameMode">
+            <button data-value="stats">Performance</button>
+            <button data-value="hide">Nothing</button>
+            <button data-value="normal">Normal notch</button>
+          </div>
+        </div>
+        <div class="row" data-needs-value="gameMode=stats">
+          <div class="label">Network speed<small>Download and upload in the performance strip</small></div>
+          <input type="checkbox" class="switch" data-key="gameShowNet">
+        </div>
+      </div>
+      <p class="note">The performance strip shows CPU, GPU load and temperature, VRAM and RAM, and stays click-through so it never gets in the way. GPU temperature and VRAM come from NVIDIA's driver; other GPUs show load only.</p>
+      <p class="note">FPS isn't shown: Windows only gives frame timing to apps running as administrator.</p>
+      <p class="note">Games in exclusive full-screen mode draw above every other window. Use borderless or windowed full-screen to see the strip.</p>
+    </section>
+
+    <!-- Widgets -->
+    <section data-sec="widgets">
+      <h2>Weather</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Use my location<small>Asks Windows Location where this PC is</small></div>
+          <input type="checkbox" class="switch" data-key="weatherAuto">
+        </div>
+        <div class="row">
+          <div class="label">City<small id="cityHint">Used when location is off or unavailable</small></div>
+          <form class="city-form" id="cityForm">
+            <input type="text" id="cityInput" placeholder="e.g. Colombo" spellcheck="false">
+            <button class="btn" type="submit">Save</button>
+          </form>
+        </div>
+        <div class="row">
+          <div class="label">Units</div>
+          <div class="seg" data-key="weatherUnit">
+            <button data-value="c">°C</button>
+            <button data-value="f">°F</button>
+          </div>
+        </div>
+      </div>
+      <p class="note">With location on, your position is rounded to about 1 km before it's used: Open-Meteo gets it for the forecast and BigDataCloud turns it into a place name. With location off, only the city you type is sent. Weather updates every 20 minutes.</p>
+
+      <h2>Focus timer</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Colour<small>Used for the timer in the notch; it turns red in the last minute</small></div>
+          <div class="swatches cswatches" data-key="focusColor">
+            <button class="cswatch" data-value="#ff9f0a" style="--c:#ff9f0a"></button>
+            <button class="cswatch" data-value="#ffd60a" style="--c:#ffd60a"></button>
+            <button class="cswatch" data-value="#30d158" style="--c:#30d158"></button>
+            <button class="cswatch" data-value="#64d2ff" style="--c:#64d2ff"></button>
+            <button class="cswatch" data-value="#5e8bff" style="--c:#5e8bff"></button>
+            <button class="cswatch" data-value="#bf5af2" style="--c:#bf5af2"></button>
+            <button class="cswatch" data-value="#ff375f" style="--c:#ff375f"></button>
+            <button class="cswatch" data-value="#ffffff" style="--c:#ffffff"></button>
+          </div>
+        </div>
+      </div>
+
+      <h2>Eye breaks</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Remind me to rest my eyes<small>The notch shows a 20-second eye break (look about 20 feet away), even during games</small></div>
+          <input type="checkbox" class="switch" data-key="eyeBreak">
+        </div>
+        <div class="row" data-needs="eyeBreak">
+          <div class="label">Every</div>
+          <div class="range-wrap">
+            <span class="range-val" data-for="eyeMinutes"></span>
+            <input type="range" data-key="eyeMinutes" min="5" max="60" step="5" data-fmt="min">
+          </div>
+        </div>
+        <div class="row" data-needs="eyeBreak">
+          <div class="label">Try it now</div>
+          <button class="btn" data-action="eye-break">Show eye break</button>
+        </div>
+      </div>
+      <p class="note">Only screen time counts: being away from the PC for 5 minutes, or locking it, starts the count again.</p>
+
+      <h2>Clock</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">24-hour time</div>
+          <input type="checkbox" class="switch" data-key="clock24">
+        </div>
+        <div class="row">
+          <div class="label">Show seconds</div>
+          <input type="checkbox" class="switch" data-key="clockSeconds">
+        </div>
+      </div>
+    </section>
+
+    <!-- Battery -->
+    <section data-sec="battery">
+      <h2>Notifications</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Show app notifications in the notch<small>WhatsApp, Discord, Mail and any app that posts Windows notifications</small></div>
+          <input type="checkbox" class="switch" data-key="notifEnabled">
+        </div>
+        <div class="row" data-needs="notifEnabled">
+          <div class="label">Show message text<small>Turn off to show only the sender and app</small></div>
+          <input type="checkbox" class="switch" data-key="notifPreview">
+        </div>
+        <div class="row" data-needs="notifEnabled">
+          <div class="label">Do not disturb<small>No pop-ups in the notch; notifications still collect in the list</small></div>
+          <input type="checkbox" class="switch" data-key="islandDnd">
+        </div>
+        <div class="row" data-needs="notifEnabled">
+          <div class="label">Hide Windows' own notification pop-ups<small>Turns on Windows "Do not disturb" while Isle runs, and puts it back when Isle closes</small></div>
+          <input type="checkbox" class="switch" data-key="hideWindowsNotifs">
+        </div>
+        <div class="row">
+          <div class="label">Windows notification access<small>Isle needs this to read notifications</small></div>
+          <button class="btn" data-action="notif-settings">Open settings</button>
+        </div>
+      </div>
+      <p class="note">Notifications are kept in memory only and cleared when Isle closes. They don't pop up during games.</p>
+
+      <h2>Battery</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Charger connected / disconnected</div>
+          <input type="checkbox" class="switch" data-key="chargingAlert">
+        </div>
+        <div class="row">
+          <div class="label">Bluetooth device connected / disconnected</div>
+          <input type="checkbox" class="switch" data-key="btAlert">
+        </div>
+        <div class="row">
+          <div class="label">Low battery</div>
+          <input type="checkbox" class="switch" data-key="lowBatteryAlert">
+        </div>
+        <div class="row" data-needs="lowBatteryAlert">
+          <div class="label">Warn at</div>
+          <div class="range-wrap">
+            <span class="range-val" data-for="lowThreshold"></span>
+            <input type="range" data-key="lowThreshold" min="5" max="50" step="5" data-fmt="%">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Clipboard + video downloads -->
+    <section data-sec="clipboard">
+      <h2>Video downloads</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Save to<small id="dlDirText"></small></div>
+          <button class="btn" data-action="pick-dl-dir">Change…</button>
+        </div>
+        <div class="row">
+          <div class="label">Offer to download copied video links<small>YouTube, Facebook, Instagram, TikTok, X, Reddit, Pinterest, Threads, Twitch, Vimeo and more</small></div>
+          <input type="checkbox" class="switch" data-key="suggestDownloads">
+        </div>
+        <div class="row">
+          <div class="label">Use my sign-in from<small>For posts that need login (Instagram, Facebook, private videos)</small></div>
+          <div class="seg" data-key="dlCookies">
+            <button data-value="">Off</button>
+            <button data-value="firefox">Firefox</button>
+            <button data-value="edge">Edge</button>
+            <button data-value="chrome">Chrome</button>
+            <button data-value="brave">Brave</button>
+          </div>
+        </div>
+      </div>
+      <p class="note">Downloads use yt-dlp and work with 1,800+ sites: paste any video link. Sign-in is read from the browser on this PC only when downloading and is never sent anywhere else. Chrome, Edge and Brave may need to be closed for it to work; Firefox works while open.</p>
+      <p class="note">Only download videos you have the right to keep.</p>
+
+      <h2>Clipboard history</h2>
+      <div class="group">
+        <div class="row">
+          <div class="label">Remember what I copy<small>Kept in memory only, never saved to disk</small></div>
+          <input type="checkbox" class="switch" data-key="clipboardEnabled">
+        </div>
+        <div class="row" data-needs="clipboardEnabled">
+          <div class="label">History size</div>
+          <div class="range-wrap">
+            <span class="range-val" data-for="clipLimit"></span>
+            <input type="range" data-key="clipLimit" min="10" max="100" step="10" data-fmt="items">
+          </div>
+        </div>
+        <div class="row">
+          <div class="label">Clear clipboard history</div>
+          <button class="btn" data-action="clear-clips">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- About -->
+    <section data-sec="about" class="about">
+      <img src="assets/icon.png" alt="" width="88" height="88">
+      <h1>Isle</h1>
+      <p>A Dynamic Island for Windows</p>
+      <p class="ver" id="ver"></p>
+      <div class="about-btns">
+        <button class="btn" data-action="reload">Reload island</button>
+        <button class="btn danger" data-action="quit">Quit Isle</button>
+      </div>
+      <p class="note center">Tip: right-click the notch for quick options, including the theme.</p>
+    </section>
+  </main>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <symbol id="s-gear" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M10.3 2h3.4l.5 2.6c.6.2 1.2.5 1.7.9l2.5-.9 1.7 2.9-2 1.8a7 7 0 0 1 0 1.9l2 1.8-1.7 2.9-2.5-.9c-.5.4-1.1.7-1.7.9l-.5 2.6h-3.4l-.5-2.6a6.6 6.6 0 0 1-1.7-.9l-2.5.9-1.7-2.9 2-1.8a7 7 0 0 1 0-1.9l-2-1.8 1.7-2.9 2.5.9c.5-.4 1.1-.7 1.7-.9zM12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z" transform="translate(0 1.5)"/></symbol>
+      <symbol id="s-media" viewBox="0 0 24 24"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2zm6 4v6l5-3z"/></symbol>
+      <symbol id="s-hud" viewBox="0 0 24 24"><path d="M3 9.5v5h4l5 4.5v-14L7 9.5zm11.5-.7a4.6 4.6 0 0 1 0 6.4l-1.1-1.1a3 3 0 0 0 0-4.2zM17 6.3a8.2 8.2 0 0 1 0 11.4l-1.1-1.1a6.6 6.6 0 0 0 0-9.2z"/></symbol>
+      <symbol id="s-game" viewBox="0 0 24 24"><path d="M7 6h10a5 5 0 0 1 4.9 6l-.9 4.3A2.6 2.6 0 0 1 16.4 17l-2-2H9.6l-2 2A2.6 2.6 0 0 1 3 16.3L2.1 12A5 5 0 0 1 7 6zm0 3v1.5H5.5V12H7v1.5h1.5V12H10v-1.5H8.5V9zm9.5 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm-2 2.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></symbol>
+      <symbol id="s-widgets" viewBox="0 0 24 24"><path d="M4 4h7v7H4zm9 0h7v7h-7zM4 13h7v7H4zm9 0h7v7h-7z"/></symbol>
+      <symbol id="s-bell" viewBox="0 0 24 24"><path d="M12 2.5a6.5 6.5 0 0 0-6.5 6.5v4.2L3.6 16.6c-.4.7.1 1.4.9 1.4h15c.8 0 1.3-.7.9-1.4l-1.9-3.4V9A6.5 6.5 0 0 0 12 2.5zM9.2 19.5a2.9 2.9 0 0 0 5.6 0z"/></symbol>
+      <symbol id="s-batt" viewBox="0 0 24 24"><path d="M4 7h14a2 2 0 0 1 2 2v1h1.5v4H20v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2zm.5 2.5v5h8l2-5z"/></symbol>
+      <symbol id="s-clip" viewBox="0 0 24 24"><path d="M9 3h6a1 1 0 0 1 1 1v1h2.5A1.5 1.5 0 0 1 20 6.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19.5v-13A1.5 1.5 0 0 1 5.5 5H8V4a1 1 0 0 1 1-1zm1 2v1h4V5zM8 11h8v1.6H8zm0 4h6v1.6H8z"/></symbol>
+      <symbol id="s-info" viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm-1 8v7h2v-7zm0-4v2h2V6z"/></symbol>
+    </defs>
+  </svg>
+  <script src="settings.js"></script>
+</body>
+</html>
