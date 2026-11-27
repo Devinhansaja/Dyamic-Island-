@@ -67,6 +67,17 @@ svg { display: block; fill: currentColor; }
 .slider b { position: absolute; left: 0; top: 0; bottom: 0; background: var(--fg); border-radius: 11px; min-width: 22px; }
 .slider i { position: absolute; left: 6px; top: 3px; width: 16px; height: 16px; color: var(--bg); mix-blend-mode: normal; }
 
+/* Liquid glass look: see-through with a bright edge (the bar is too thin for Windows' frosted layer) */
+html[data-bar=glass] {
+  --bg: linear-gradient(180deg, rgba(40, 40, 48, .42), rgba(30, 30, 38, .30));
+  --fg: #fff;
+  --muted: rgba(255, 255, 255, .7);
+  --hover: rgba(255, 255, 255, .2);
+  --pop-bg: rgba(34, 34, 40, .9);
+  --edge: rgba(255, 255, 255, .26);
+}
+html[data-bar=glass] #mb { box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .22); text-shadow: 0 1px 2px rgba(0, 0, 0, .55); }
+
 /* slides down from the top edge when it appears */
 #mb { transition: transform .42s cubic-bezier(.22, 1, .36, 1); }
 #mb.intro { transform: translateY(-100%); transition: none; }

@@ -1,6 +1,6 @@
 {
   "name": "dynamic-island",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A Dynamic Island style widget for Windows",
   "main": "main.js",
   "private": true,

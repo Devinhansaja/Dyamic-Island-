@@ -8,6 +8,8 @@ const bar = document.getElementById('bar');
 const label = document.getElementById('label');
 
 let S = {};
+let displays = { list: [], current: '' };   // the monitors (for the move button)
+const MOVE_ICON = '<svg class="mv" viewBox="0 0 24 24"><rect x="2.5" y="4" width="8.5" height="7" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="13" y="10" width="8.5" height="7" rx="1.4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M7 14.5v2.5h4M17 8V5.5h-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 let running = [];            // open apps, from the helper (front-most first)
 const seenOrder = [];        // open-but-not-pinned apps, in the order they appeared (stable)
 let hovering = false;
@@ -18,7 +20,7 @@ let raf = 0;
 const lc = (s) => String(s || '').toLowerCase();
 const pinKey = (p) => lc(p.aumid || p.exe || p.lnk);
 const size = () => Math.max(28, Math.min(96, Number(S.dockSize) || 40));
-const amount = () => (S.dockMagnify === false ? 1 : Math.max(1, Math.min(2.5, Number(S.dockMagnifyAmount) || 1.6)));
+const amount = () => (S.dockMagnify === false ? 1 : Math.max(1, Math.min(3, Number(S.dockMagnifyAmount) || 2)));
 // A pinned app and an open one are the same app when their app IDs match, else their programs.
 function same(p, r) {
   if (p.aumid && r.aumid) return lc(p.aumid) === lc(r.aumid);
@@ -103,6 +105,12 @@ function model() {
     out.push({ kind: 'special', special: 'downloads', key: '::downloads', name: 'Downloads', iconPaths: ['shell:Downloads'] });
     out.push({ kind: 'special', special: 'trash', key: '::trash', name: 'Recycle Bin', iconPaths: ['shell:RecycleBinFolder'] });
   }
+  // Several monitors: a button to move the Dock to the next one
+  if (displays.list.length > 1) {
+    const at = displays.list.findIndex((x) => x.id === displays.current);
+    const next = displays.list[(at + 1) % displays.list.length];
+    out.push({ kind: 'special', special: 'move', key: '::move', name: 'Move Dock to ' + (next ? next.label : 'the next screen'), iconPaths: [] });
+  }
   return out;
 }
 
@@ -138,7 +146,8 @@ function render() {
         el = document.createElement('div');
         el._key = k;
         if (it.kind === 'sep') el.className = 'sep';
-        else { el.className = 'item'; el.innerHTML = '<i class="ph"></i><i class="dot"></i>'; loadIcon(el, it); el.style.width = el.style.height = size() + 'px'; el._w = size(); }
+        else if (it.special === 'move') { el.className = 'item move'; el.innerHTML = MOVE_ICON; el.style.width = el.style.height = size() + 'px'; el._w = size(); }
+      else { el.className = 'item'; el.innerHTML = '<i class="ph"></i><i class="dot"></i>'; loadIcon(el, it); el.style.width = el.style.height = size() + 'px'; el._w = size(); }
         if (anim() && bar.dataset.ready) { el.classList.add('enter'); setTimeout(() => el.classList.remove('enter'), 420); }
       }
       // place it right after the previous one (leaving icons stay where they were)
@@ -179,7 +188,7 @@ function measure() {
 function targets() {
   const base = size();
   const amt = amount();
-  const R = base * 3;
+  const R = base * 3.4;   // how many neighbours grow along with it
   const t = new Map();
   for (const el of bar.children) {
     if (!el.classList.contains('item') || el.classList.contains('leave')) continue;
@@ -224,14 +233,17 @@ api.onDockHover((h) => {
 // back when the mouse touches the bottom edge of the screen.
 let revealed = false;
 let hideT = 0;
+let appFull = false;   // an app is full screen: hide like "hide automatically" (Mac-style)
+const hiding = () => !!S.dockAutoHide || appFull;
 function autoHideUpdate() {
   clearTimeout(hideT);
   const busy = hovering || (drag && drag.started) || menuFor;
-  if (S.dockAutoHide && !busy && revealed) hideT = setTimeout(() => { revealed = false; autoHideUpdate(); }, 650);
-  dockEl.classList.toggle('away', !!S.dockAutoHide && !revealed && !busy);
+  if (hiding() && !busy && revealed) hideT = setTimeout(() => { revealed = false; autoHideUpdate(); }, 650);
+  dockEl.classList.toggle('away', hiding() && !revealed && !busy);
   reportHit();
 }
 api.onDockReveal(() => { revealed = true; autoHideUpdate(); });
+api.onDockFullscreen((on) => { appFull = !!on; if (appFull) revealed = false; autoHideUpdate(); });
 
 /* ---------------------------------------------------------------- name label */
 function itemAt(x) {
@@ -271,7 +283,13 @@ function reportHit() {
   }
   const k = JSON.stringify(hit);
   if (k !== lastHit) { lastHit = k; api.dockHit(hit); }
+  // Liquid glass: where the bar is, so the frosted layer sits right behind it (none while hidden)
+  const away = dockEl.classList.contains('away') || dockEl.classList.contains('intro') || dockEl.classList.contains('empty');
+  const barRect = S.barTheme === 'glass' && !away ? { x: r.left, y: r.top, w: r.width, h: r.height } : null;
+  const kb = JSON.stringify(barRect);
+  if (kb !== lastBar) { lastBar = kb; api.dockBar(barRect); }
 }
+let lastBar = '';
 
 /* ---------------------------------------------------------------- click, menu, drag */
 const payload = (it) => ({ name: it.name, lnk: it.lnk || '', exe: it.exe || '', aumid: it.aumid || '', runKey: it.runKey || '', special: it.special || '' });
@@ -279,6 +297,7 @@ const payload = (it) => ({ name: it.name, lnk: it.lnk || '', exe: it.exe || '', 
 function open(el) {
   const it = el._item;
   if (!it) return;
+  if (it.special === 'move') { api.dockMoveNext(); return; }
   if (!it.runKey && !it.special) {
     el.classList.add('bounce');                         // launching
     setTimeout(() => el.classList.remove('bounce'), 2600);
@@ -308,6 +327,10 @@ function openMenu(el) {
     rows.push({ label: 'Keep in Dock', check: pinned, run: () => (pinned ? api.dockUnpin(it.key) : api.dockPin(payload(it))) });
     if (it.exe || it.lnk) rows.push({ label: 'Show in folder', run: () => api.dockReveal(payload(it)) });
     if (it.runKey) rows.push('-', { label: 'Quit', danger: true, run: () => api.dockQuit(it.runKey) });
+  }
+  if (displays.list.length > 1) {
+    rows.push('-');
+    for (const x of displays.list) if (x.id !== displays.current) rows.push({ label: 'Move Dock to ' + x.label, run: () => api.dockMoveTo(x.id) });
   }
   rows.push('-',
     { label: S.dockAutoHide ? 'Turn Hiding Off' : 'Turn Hiding On', run: () => api.set('dockAutoHide', !S.dockAutoHide) },
@@ -427,7 +450,7 @@ document.addEventListener('dragover', (e) => {
   e.preventDefault();   // (also stops the window from opening a dropped file)
   if (!hasFiles(e)) return;
   e.dataTransfer.dropEffect = 'link';
-  if (S.dockAutoHide) { revealed = true; autoHideUpdate(); }
+  if (hiding()) { revealed = true; autoHideUpdate(); }
   showGap(dropIndexAt(e.clientX));
 });
 document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) hideGap(); });   // left the window
@@ -444,17 +467,25 @@ document.addEventListener('drop', (e) => {
 let introDone = false;
 function apply(s) {
   const oldSize = size();
+  const oldFull = S.dockWidth;
   S = s || {};
   document.documentElement.classList.toggle('noanim', S.macAnimations === false);
   // first appearance: slide up from the bottom edge
-  if (!introDone) { introDone = true; if (anim()) { dockEl.classList.add('intro'); requestAnimationFrame(() => requestAnimationFrame(() => dockEl.classList.remove('intro'))); } }
-  document.documentElement.dataset.theme = S.theme === 'white' ? 'white' : 'black';
+  if (!introDone) { introDone = true; if (anim()) { dockEl.classList.add('intro'); requestAnimationFrame(() => requestAnimationFrame(() => { dockEl.classList.remove('intro'); setTimeout(reportHit, 450); })); } }
+  // Look (Dark / Light / Liquid glass) and width (around the icons, or the whole screen)
+  const look = S.barTheme === 'light' || S.barTheme === 'glass' ? S.barTheme : 'dark';
+  document.documentElement.dataset.bar = look;
+  document.documentElement.dataset.theme = look === 'light' ? 'white' : 'black';
+  dockEl.classList.toggle('full', S.dockWidth === 'full');
   document.documentElement.style.setProperty('--s', size() + 'px');
+  // the bar is at least 40 px tall (as main.js keeps its space): extra height goes into the padding
+  document.documentElement.style.setProperty('--pad', Math.max(6, (Math.max(40, size() + 12) - size()) / 2) + 'px');
   render();                      // (rebuilds only if what's in the Dock changed)
-  if (size() !== oldSize) { measure(); magnify(); }
+  if (size() !== oldSize || S.dockWidth !== oldFull) { measure(); magnify(); }
   autoHideUpdate();
 }
 api.onSettings(apply);
 api.onDockApps((a) => { running = Array.isArray(a) ? a : []; render(); });
+api.onDockDisplays((d) => { displays = d && Array.isArray(d.list) ? d : { list: [], current: '' }; render(); });
 window.addEventListener('resize', () => { measure(); magnify(); });
 api.getSettings().then(apply);

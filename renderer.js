@@ -50,10 +50,10 @@ function restingState() {
     notch.classList.toggle('live-line', line);
     if (line) renderRing();
   }
-  if (dlActive()) return 'live';
   notch.classList.toggle('live-timer', timerLive && !musicLive && !dlActive());
-  // Music and the focus timer at the same time: split into a pill plus a separate timer bubble.
+  // Music (or a download) and the focus timer at the same time: a pill plus a separate timer bubble.
   notch.classList.toggle('dual', timerLive && (musicLive || dlActive()));
+  if (dlActive()) return 'live';
   return musicLive || timerLive ? 'live' : 'idle';
 }
 
@@ -193,6 +193,7 @@ function paintBar(value) {
 function renderHudRows(list) {
   const box = $('hudRows');
   if (box.childElementCount !== list.length || [...box.children].some((r, i) => r.dataset.id !== list[i].id)) {
+    ui.dragging = false;   // a bar being dragged goes away with the old rows (its pointerup never comes)
     box.innerHTML = '';
     for (const m of list) {
       const row = document.createElement('div');
@@ -255,7 +256,8 @@ function showHud(kind) {
   // While the mouse is on the HUD it stays, so it can be adjusted.
   if (!ui.hovering && !ui.dragging) T.hud = setTimeout(endHud, 1500);
 }
-function endHud() { ui.state = 'hud-done'; if (!nextNotif()) settle(); }
+// (Only while the HUD is still what's showing: a toast or the panel opened since then stays.)
+function endHud() { if (ui.state !== 'hud') return; ui.state = 'hud-done'; if (!nextNotif()) settle(); }
 
 // Click or drag along a bar; onValue gets 0-100 (at most once per frame).
 function makeDraggable(track, onValue) {
@@ -362,6 +364,7 @@ function showToast({ kind = null, icon: ic, iconColor = '', iconBg = '', artKey 
   setState('toast');
   clearTimeout(T.toast);
   T.toast = setTimeout(() => {
+    if (ui.state !== 'toast') return;   // a HUD or the panel took over meanwhile: leave it be
     ui.state = 'toast-done';
     if (!nextNotif()) settle();
   }, ms);
@@ -431,6 +434,9 @@ function renderNotifs(access) {
   if (access && access !== 'Allowed') {
     $('notifEmptyTitle').textContent = 'Notification access is off';
     $('notifEmptyText').textContent = 'Allow it in Windows Settings → Privacy → Notifications.';
+  } else if (access === 'Allowed') {
+    $('notifEmptyTitle').textContent = 'No notifications';
+    $('notifEmptyText').textContent = 'New ones from your apps show up here.';
   }
   for (const n of notifList) {
     const el = document.createElement('div');
@@ -676,7 +682,7 @@ api.onUpdate((u) => {
       $('tTitle').textContent = `Updating to Isle ${u.version}`;
       $('tSub').textContent = u.pct >= 100 ? 'Installing… Isle will restart' : `Downloading… ${u.pct || 0}%`;
       clearTimeout(T.toast);
-      T.toast = setTimeout(() => { ui.state = 'toast-done'; if (!nextNotif()) settle(); }, 15000);
+      T.toast = setTimeout(() => { if (ui.state !== 'toast') return; ui.state = 'toast-done'; if (!nextNotif()) settle(); }, 15000);
     } else if (!u.pct) {
       showToast({ ...base, title: `Updating to Isle ${u.version}`, sub: 'Downloading…', ms: 15000 });
     }
@@ -707,6 +713,7 @@ function eyeType(text) {
 }
 
 function startEyeBreak(seconds = 20) {
+  if (ui.hold === 'welcome') endWelcome();   // the welcome makes way, the break isn't lost
   if (ui.hold) return;
   // Whatever the notch was doing stops: open panel, HUD, pop-ups (queued notifications come after).
   for (const k of ['hud', 'toast', 'enter', 'leave']) clearTimeout(T[k]);
@@ -1141,6 +1148,7 @@ $('rAnswer').addEventListener('click', (e) => {
   if (!call.ring) return;
   callPress(call.ring.procs, 'answer');
   $('rSub').textContent = 'Answering…';
+  clearTimeout(call.ringTimer);   // (else the 45 s one could end a later call)
   call.ringTimer = setTimeout(endRing, 4000);
 });
 $('rDecline').addEventListener('click', (e) => {
@@ -1642,6 +1650,7 @@ async function startGlass() {
     v.muted = true;
     v.srcObject = glass.stream;
     await v.play();
+    if (!glassWanted()) { glass.stream.getTracks().forEach((t) => t.stop()); glass.stream = null; return; }   // switched off meanwhile
     glass.video = v;
     panel.classList.add('glass-live');
     glassRate();

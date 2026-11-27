@@ -149,7 +149,8 @@ function startMenu() {
 }
 
 let popBuild = null;
-function refreshPop() { if (openFor && popBuild) fillPop(typeof popBuild === 'function' ? popBuild() : popBuild); }
+let sliding = false;   // the volume slider is being dragged: don't rebuild the menu under the mouse
+function refreshPop() { if (openFor && popBuild && !sliding) fillPop(typeof popBuild === 'function' ? popBuild() : popBuild); }
 function fillPop(rows) {
   pop.innerHTML = '';
   for (const r of rows) {
@@ -184,9 +185,10 @@ function makeSlider() {
     $('vol').innerHTML = volIcon(vol);
     if (Date.now() - last > 50) { last = Date.now(); api.mbDo('vol', v); }
   };
-  el.addEventListener('pointerdown', (e) => { el.setPointerCapture(e.pointerId); set(e); });
+  el.addEventListener('pointerdown', (e) => { sliding = true; el.setPointerCapture(e.pointerId); set(e); });
   el.addEventListener('pointermove', (e) => { if (el.hasPointerCapture(e.pointerId)) set(e); });
-  el.addEventListener('pointerup', (e) => { set(e); api.mbDo('vol', vol.v); });
+  el.addEventListener('pointerup', (e) => { set(e); api.mbDo('vol', vol.v); sliding = false; });
+  el.addEventListener('lostpointercapture', () => { sliding = false; });
   return el;
 }
 function openPop(btn, build) {
@@ -237,7 +239,7 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 api.onMbSys((m) => {
   if (m.t === 'power') power = m;
-  if (m.t === 'vol' && m.v >= 0 && !(openFor && openFor.id === 'vol' && document.querySelector('.slider:active'))) vol = { v: m.v, m: !!m.m };
+  if (m.t === 'vol' && m.v >= 0 && !sliding) vol = { v: m.v, m: !!m.m };
   renderStatus();
 });
 api.onMbWifi((w) => { wifi = w || { kind: 'none' }; renderStatus(); });
@@ -251,7 +253,10 @@ function apply(s) {
   S = s || {};
   document.documentElement.classList.toggle('noanim', S.macAnimations === false);
   if (!introDone) { introDone = true; if (S.macAnimations !== false) { const mb = document.getElementById('mb'); mb.classList.add('intro'); requestAnimationFrame(() => requestAnimationFrame(() => mb.classList.remove('intro'))); } }
-  document.documentElement.dataset.theme = S.theme === 'white' ? 'white' : 'black';
+  // Look: Dark / Light / Liquid glass (shared with the Dock)
+  const look = S.barTheme === 'light' || S.barTheme === 'glass' ? S.barTheme : 'dark';
+  document.documentElement.dataset.bar = look;
+  document.documentElement.dataset.theme = look === 'light' ? 'white' : 'black';
   renderClock();
   renderStatus();
   renderTray();

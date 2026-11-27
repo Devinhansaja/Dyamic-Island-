@@ -47,6 +47,7 @@ function render() {
 
   all('input.switch[data-key]').forEach((el) => { el.checked = !!S[el.dataset.key]; });
   all('input[type=range][data-key]').forEach((el) => {
+    if (el._dragging) return;   // a live slider being dragged: don't pull it back to an older value
     el.value = S[el.dataset.key];
     const out = document.querySelector(`.range-val[data-for="${el.dataset.key}"]`);
     if (out) out.textContent = fmtRange(el);
@@ -80,6 +81,11 @@ all('input[type=range][data-key]').forEach((el) => {
     }
   });
   el.addEventListener('change', () => api.set(el.dataset.key, Number(el.value)));
+  el.addEventListener('pointerdown', () => { el._dragging = true; });
+  const done = () => { el._dragging = false; };
+  el.addEventListener('pointerup', done);
+  el.addEventListener('pointercancel', done);
+  el.addEventListener('lostpointercapture', done);
 });
 all('.seg[data-key]').forEach((seg) => {
   seg.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => api.set(seg.dataset.key, b.dataset.value)));

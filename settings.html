@@ -206,6 +206,25 @@
           <div class="label">Use the Dock<small>A Mac-style bar at the bottom of the main screen with your apps</small></div>
           <input type="checkbox" class="switch" data-key="dockEnabled">
         </div>
+        <div class="row">
+          <div class="label">Look<small>For the Dock and the menu bar. Liquid glass: Windows' frosted blur behind the Dock</small></div>
+          <div class="seg" data-key="barTheme">
+            <button data-value="dark">Dark</button>
+            <button data-value="light">Light</button>
+            <button data-value="glass">Liquid glass</button>
+          </div>
+        </div>
+        <div class="row" data-needs="dockEnabled">
+          <div class="label">Width<small>Around the icons (Mac), or across the whole screen with the icons in the middle</small></div>
+          <div class="seg" data-key="dockWidth">
+            <button data-value="fit">Fit icons</button>
+            <button data-value="full">Full width</button>
+          </div>
+        </div>
+        <div class="row" data-needs="dockEnabled">
+          <div class="label">Screen<small>The Dock starts on your main screen. With more than one screen, move it to another one (also in the Dock's right-click menu).</small></div>
+          <button class="btn" data-action="dock-move-next">Move to next screen</button>
+        </div>
         <div class="row" data-needs="dockEnabled">
           <div class="label">Icon size</div>
           <div class="range-wrap">
@@ -221,7 +240,7 @@
           <div class="label">How much</div>
           <div class="range-wrap">
             <span class="range-val" data-for="dockMagnifyAmount"></span>
-            <input type="range" data-key="dockMagnifyAmount" min="1.2" max="2.2" step="0.1" data-fmt="x" data-live="1">
+            <input type="range" data-key="dockMagnifyAmount" min="1.2" max="3" step="0.1" data-fmt="x" data-live="1">
           </div>
         </div>
         <div class="row" data-needs="dockEnabled">
@@ -276,8 +295,7 @@
           <div class="label">Pinned apps<small>Right-click an icon to keep or remove it, drag icons to move them, drag one up out of the Dock to remove it</small></div>
           <button class="btn" data-action="dock-import">Copy from taskbar</button>
         </div>
-      </div>
-      <p class="note">The Dock hides while a game or video is full-screen.</p>
+      </div>      <p class="note">The Dock hides while a game or video is full-screen.</p>
     </section>
 
     <!-- Gaming -->

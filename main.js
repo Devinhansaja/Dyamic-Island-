@@ -57,9 +57,12 @@ const DEFAULTS = {
   dockEnabled: false,
   dockSize: 34,               // icon size, px
   dockAutoHide: false,        // slide out of sight; back when the mouse touches the bottom edge
+  dockWidth: 'fit',           // 'fit' (just around the icons, Mac) | 'full' (across the whole screen, icons in the middle)
+  dockDisplay: '',            // the monitor the Dock is on ('' = the main monitor)
+  barTheme: 'dark',           // Dock + menu bar look: 'dark' | 'light' | 'glass' (Liquid glass: Windows' frosted blur behind the Dock)
   macAnimations: true,        // Mac-style animations in the Dock and the menu bar
   dockMagnify: true,          // icons grow under the mouse
-  dockMagnifyAmount: 1.6,     // how much (×)
+  dockMagnifyAmount: 2,       // how much (×)
   dockReserve: true,          // keep its space free: maximized windows stop above it
   taskbarMode: 'hidden',      // Windows' taskbar while the Dock is on: 'hidden' | 'autohide' | 'normal'
   menuBar: false,             // Mac-style menu bar at the top: Start, the app in front, background apps, Wi-Fi, sound, battery, clock
@@ -107,7 +110,9 @@ let helper = null;
 let quitting = false;
 let fullscreenApp = false;
 let fullscreenProc = '';
-let mode = 'normal';          // 'normal' | 'game' | 'video'
+let fullscreenCls = '';       // window class of the full-screen window
+let appFull = false;          // an ordinary app is full screen: the Dock / menu bar hide until the mouse reaches the edge
+let mode = 'normal';         // 'normal' | 'game' | 'video'
 let eyeShowing = false;       // an eye break is on screen (see "eye breaks")
 
 // Full-screen apps that are browsers or players count as "video", everything else as a game.
@@ -200,7 +205,9 @@ function setSetting(key, value) {
   if (key === 'clipLimit') trimClips();
   if (key === 'theme') applyTheme();
   if (['hideWindowsVolume', 'volumeHud', 'brightnessHud', 'notifEnabled', 'hideWindowsNotifs'].includes(key)) syncHelper();
-  if (['dockEnabled', 'taskbarMode', 'dockReserve', 'dockSize', 'dockAutoHide'].includes(key)) applyDock();
+  if (['dockEnabled', 'taskbarMode', 'dockReserve', 'dockSize', 'dockAutoHide', 'dockWidth', 'dockDisplay'].includes(key)) applyDock();
+  if (key === 'dockDisplay') sendDockDisplays();
+  if (['barTheme', 'dockEnabled'].includes(key)) applyDockGlass();
   if (['menuBar', 'menuBarTray'].includes(key)) applyMenuBar();
   if (key === 'weatherCity' || key === 'weatherUnit' || key === 'weatherAuto') fetchWeather();
   broadcast('settings', settings);
@@ -237,7 +244,27 @@ function positionWindow() {
 function positionSoon() {
   positionWindow();
   setTimeout(positionWindow, 600);
-  setTimeout(() => { positionWindow(); refreshNotch(); }, 2000);
+  setTimeout(() => { positionWindow(); refreshAll(); }, 2000);
+}
+// The Dock, its glass, the menu bar and the widgets are transparent windows too and go
+// invisible the same way (e.g. while the screen settles after Windows starts): same cure.
+// (Not by hiding and showing them: after that Windows' mouse-downs no longer reach a window that
+// can't take focus, so clicks on the Dock did nothing. Repaint them and put them back on top.)
+function refreshBars() {
+  for (const w of [dockGlass, dockWin, mbWin]) {   // glass first: the Dock goes above it
+    if (!w || w.isDestroyed() || !w.isVisible()) continue;
+    if (w.webContents) w.webContents.invalidate();
+    if (!w._parked) { w.setAlwaysOnTop(true, 'pop-up-menu'); w.moveTop(); }
+  }
+}
+function refreshAll() { refreshBars(); refreshNotch(); }
+
+// A short log of the first minutes after Windows starts Isle (startup.log next to settings.json),
+// to see what went on if something doesn't show up after a restart.
+const startT = Date.now();
+function slog(...a) {
+  if (!startedAtLogin || Date.now() - startT > 5 * 60 * 1000) return;
+  try { fs.appendFileSync(path.join(app.getPath('userData'), 'startup.log'), `${((Date.now() - startT) / 1000).toFixed(1)}s ${a.join(' ')}\n`); } catch { /* ignore */ }
 }
 // Windows sometimes stops showing the notch's transparent window (after a screen / scaling change,
 // or another of Isle's windows lying over it) although it keeps working. Hiding and showing it
@@ -282,6 +309,8 @@ function createIsland() {
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile('index.html');
   win.once('ready-to-show', updateVisibility);
+  // The notch's page crashed: load it again (its state is replayed once it's loaded).
+  win.webContents.on('render-process-gone', () => setTimeout(() => { if (win && !win.isDestroyed()) win.reload(); }, 1000));
   win.webContents.on('did-finish-load', () => {
     setTimeout(replayState, 300);
     win.webContents.send('mode', { mode, app: fullscreenProc });
@@ -309,22 +338,32 @@ function createIsland() {
 const SYSTEM_APPS = new Set([
   'lockapp', 'logonui', 'searchhost', 'searchapp', 'startmenuexperiencehost', 'shellexperiencehost',
   'textinputhost', 'screenclippinghost', 'snippingtool', 'explorer', 'electron', 'dwm',
+  'isle',   // Isle's own windows
 ]);
 
+// Full-screen windows of ordinary apps (Electron / Chromium apps, Store apps, WPF, WinForms, Qt...)
+// are an app in full screen, not a game: Isle stays as usual there, and (like a Mac) the Dock and
+// menu bar step aside and come back when the mouse touches the bottom / top edge.
+const APP_CLASSES = /^(Chrome_WidgetWin_\d|ApplicationFrameWindow|Windows\.UI\.Core\.CoreWindow|WinUIDesktopWin32WindowClass|HwndWrapper\[.*|WindowsForms10\..*|Qt\d*\w*QWindow\w*|SunAwtFrame|MozillaWindowClass|Notepad|CabinetWClass|OpusApp|XLMAIN|rctrl_renwnd32)$/;
+function isFullscreenApp() {
+  return fullscreenApp && !SYSTEM_APPS.has(fullscreenProc.toLowerCase()) && !VIDEO_APPS.has(fullscreenProc.toLowerCase()) && APP_CLASSES.test(fullscreenCls);
+}
 function currentMode() {
   if (!fullscreenApp || SYSTEM_APPS.has(fullscreenProc.toLowerCase())) return 'normal';
-  return VIDEO_APPS.has(fullscreenProc.toLowerCase()) ? 'video' : 'game';
+  if (VIDEO_APPS.has(fullscreenProc.toLowerCase())) return 'video';
+  return isFullscreenApp() ? 'normal' : 'game';
 }
 
 function updateVisibility() {
   if (!win || win.isDestroyed()) return;
   const m = currentMode();
   if (m !== mode) {
+    slog('mode', mode, '->', m, fullscreenProc);
     mode = m;
     if (mode === 'game' && settings.gameMode === 'stats') startPerf();
     else stopPerf();
     // Never stay clickable while a game is in front.
-    if (mode === 'game') { hovering = false; win.setIgnoreMouseEvents(true, { forward: true }); }
+    if (mode === 'game') { hovering = false; win.setIgnoreMouseEvents(true, { forward: true }); win.webContents.send('hover', false); }
     win.webContents.send('mode', { mode, app: fullscreenProc });
     syncHelper();
   }
@@ -338,9 +377,35 @@ function updateVisibility() {
     // Capture exclusion only sticks once the window is actually on screen.
     applyTheme();
   }
+  const af = isFullscreenApp() && mode === 'normal';
+  if (af !== appFull) {
+    appFull = af;
+    slog('app full screen', af, fullscreenProc, fullscreenCls);
+    if (dockWin && !dockWin.isDestroyed()) dockWin.webContents.send('dock:fullscreen', af);
+  }
   updateDockVisibility();
   updateMenuBarVisibility();
 }
+
+// An app in full screen: the menu bar is out of sight until the mouse touches the top edge
+// (it stays while the mouse is on it or a menu is open). The space it keeps stays kept.
+let mbPeekUntil = 0;
+let mbPeekHidden = false;
+setInterval(() => {
+  if (!mbWin || mbWin.isDestroyed() || !settings.menuBar || mode !== 'normal') return;
+  if (!appFull) {
+    if (mbPeekHidden) { mbPeekHidden = false; setBarShown(mbWin, true); if (win && !win.isDestroyed()) win.moveTop(); }
+    return;
+  }
+  if (!mbWin.isVisible()) return;   // not shown yet at all (still loading)
+  const p = screen.getCursorScreenPoint();
+  const b = screen.getPrimaryDisplay().bounds;
+  if ((p.y <= b.y + 1 && p.x >= b.x && p.x < b.x + b.width) || (barShown(mbWin) && (mbHover || mbTall))) mbPeekUntil = Date.now() + 700;
+  const want = Date.now() < mbPeekUntil;
+  if (want && !barShown(mbWin)) { setBarShown(mbWin, true); if (win && !win.isDestroyed()) win.moveTop(); }
+  if (!want && barShown(mbWin)) { setBarShown(mbWin, false); mbHover = false; }
+  mbPeekHidden = !want;
+}, 60);
 
 /* Hover: the window is click-through; we watch the cursor and only make it
    clickable while it is over the notch's reported hit area. */
@@ -468,12 +533,33 @@ function keepPlaced(w, where) {
   w.on('show', () => { fix(); setTimeout(fix, 300); setTimeout(fix, 1500); });
   return fix;
 }
+// Showing / hiding the Dock and the menu bar. Electron's hide() leaves a window that can't take focus
+// unable to get mouse-downs once it's shown again (clicks on the Dock did nothing after a game or a
+// screen refresh), so a bar is shown once and from then on only made see-through and click-through.
+function barShown(w) { return !!w && !w.isDestroyed() && w.isVisible() && !w._parked; }
+function setBarShown(w, on) {
+  if (!w || w.isDestroyed()) return;
+  if (on) {
+    if (!w.isVisible()) w.showInactive();
+    if (w._parked) { w._parked = false; w.setOpacity(1); }
+    w.setAlwaysOnTop(true, 'pop-up-menu');
+  } else if (barShown(w)) {
+    w._parked = true;
+    w.setOpacity(0);
+    w.setIgnoreMouseEvents(true, { forward: true });
+  }
+}
 const hwndOf = (w) => { const b = w.getNativeWindowHandle(); return b.length >= 8 ? b.readBigUInt64LE(0) : BigInt(b.readUInt32LE(0)); };
-const dockBarH = () => Math.round(Number(settings.dockSize) || 34) + 12;   // icon + padding
-const dockReservePx = () => dockBarH() + 5;                                 // + gap below
+// The bar is at least 40 px tall (Windows won't make the glass layer behind it any thinner).
+const dockBarH = () => Math.max(40, Math.round(Number(settings.dockSize) || 34) + 12);   // icon + padding
+const dockReservePx = () => dockBarH() + (settings.dockWidth === 'full' ? 6 : 5);   // + gap below
 
+// The monitor the Dock is on: the chosen one if it's connected, else the main one.
+function dockDisplay() {
+  return screen.getAllDisplays().find((d) => String(d.id) === String(settings.dockDisplay)) || screen.getPrimaryDisplay();
+}
 function dockBounds() {
-  const { bounds } = screen.getPrimaryDisplay();
+  const { bounds } = dockDisplay();
   return { x: bounds.x, y: bounds.y + bounds.height - DOCK_WIN_H, width: bounds.width, height: DOCK_WIN_H };
 }
 
@@ -492,34 +578,56 @@ function createDock() {
   dockWin._fix = keepPlaced(dockWin, dockBounds);
   dockWin.loadFile('dock.html');
   dockWin.once('ready-to-show', () => { updateDockVisibility(); reserveDock(); });
-  dockWin.webContents.on('did-finish-load', () => dockWin.webContents.send('dock:apps', dockApps));
-  dockWin.on('closed', () => { dockWin = null; dockHit = null; dockHover = false; });
+  dockWin.webContents.on('did-finish-load', () => { dockWin.webContents.send('dock:apps', dockApps); sendDockDisplays(); dockWin.webContents.send('dock:fullscreen', appFull); });
+  dockWin.on('closed', () => { dockWin = null; dockHit = null; dockHover = false; dockBarRel = null; });
+  dockWin.on('move', placeDockBar);     // e.g. moved to another monitor: the glass follows
+  dockWin.on('resize', placeDockBar);
+  // Its page crashed (it can at start-up, while Windows' graphics are still starting): make it again.
+  dockWin.webContents.on('render-process-gone', (_e, d) => {
+    slog('dock page gone', d && d.reason);
+    setTimeout(() => {
+      if (dockWin && !dockWin.isDestroyed()) { helperCmd(`appbar ${hwndOf(dockWin)} 0`); dockWin.destroy(); }   // its space back first
+      dockWin = null;
+      if (settings.dockEnabled) applyDock();
+    }, 1000);
+  });
 }
 
 function reserveDock() {
   if (!dockWin || dockWin.isDestroyed()) return;
-  const on = settings.dockReserve && !settings.dockAutoHide && dockWin.isVisible();
-  helperCmd(`appbar ${hwndOf(dockWin)} ${on ? Math.round(dockReservePx() * screen.getPrimaryDisplay().scaleFactor) : 0}`);
+  const on = settings.dockReserve && !settings.dockAutoHide && barShown(dockWin);
+  const d = dockDisplay();
+  const mon = screen.dipToScreenRect(null, d.bounds);   // that monitor in real pixels
+  helperCmd(`appbar ${hwndOf(dockWin)} ${on ? Math.round(dockReservePx() * d.scaleFactor) : 0} bottom ${mon.x} ${mon.y} ${mon.width} ${mon.height}`);
   setTimeout(() => dockWin && dockWin._fix && dockWin._fix(), 400);
 }
 
 function updateDockVisibility() {
   if (!dockWin || dockWin.isDestroyed()) return;
   const show = settings.dockEnabled && mode === 'normal';
-  if (show && !dockWin.isVisible()) { dockWin.setBounds(dockBounds()); dockWin.showInactive(); dockWin.setAlwaysOnTop(true, 'pop-up-menu'); reserveDock(); }
-  if (!show && dockWin.isVisible()) { dockWin.hide(); reserveDock(); }
+  if (show !== barShown(dockWin)) slog('dock', show ? 'show' : 'hide', JSON.stringify(dockBounds()));
+  if (show && !barShown(dockWin)) { dockWin.setBounds(dockBounds()); setBarShown(dockWin, true); reserveDock(); }
+  if (!show && barShown(dockWin)) {
+    setBarShown(dockWin, false);
+    dockHover = false;
+    dockWin.webContents.send('dock:hover', false);
+    reserveDock();
+  }
+  applyDockGlass();
 }
 
 // Turn the Dock on / off and make Windows' taskbar match.
 function applyDock() {
   if (settings.dockEnabled) {
     createDock();
-    if (dockWin && dockWin.isVisible()) { dockWin.setBounds(dockBounds()); reserveDock(); }
+    if (barShown(dockWin)) { dockWin.setBounds(dockBounds()); reserveDock(); }
     helperCmd('dock 1');
     helperCmd(`taskbar ${settings.taskbarMode || 'hidden'}`);
     if (!Array.isArray(settings.dockPins)) helperCmd('dockpins');   // first time: start with the taskbar's pins
   } else {
     if (dockWin && !dockWin.isDestroyed()) { helperCmd(`appbar ${hwndOf(dockWin)} 0`); dockWin.destroy(); }
+    if (dockGlass && !dockGlass.isDestroyed()) dockGlass.destroy();
+    dockBar = null;
     dockWin = null;
     if (!settings.menuBar) helperCmd('dock 0');
     helperCmd('taskbar normal');
@@ -541,7 +649,7 @@ function onDockMessage(msg) {
 
 // Keep the Dock on the main screen (and its space right) when screens change.
 app.whenReady().then(() => {
-  const follow = () => { if (dockWin && !dockWin.isDestroyed()) { dockWin.setBounds(dockBounds()); reserveDock(); } };
+  const follow = () => { if (dockWin && !dockWin.isDestroyed()) { dockWin.setBounds(dockBounds()); reserveDock(); sendDockDisplays(); } };
   screen.on('display-metrics-changed', follow);
   screen.on('display-added', follow);
   screen.on('display-removed', follow);
@@ -549,11 +657,11 @@ app.whenReady().then(() => {
 
 // Click-through except over the Dock (checked like the notch's hover).
 setInterval(() => {
-  if (!dockWin || dockWin.isDestroyed() || !dockWin.isVisible() || !dockHit) return;
+  if (!barShown(dockWin) || !dockHit) return;
   const p = screen.getCursorScreenPoint();
   const b = dockWin.getBounds();
   // Hidden Dock: the mouse at the very bottom edge of the screen brings it back.
-  if (settings.dockAutoHide && p.y >= b.y + b.height - 2 && p.x >= b.x && p.x < b.x + b.width) dockWin.webContents.send('dock:reveal');
+  if ((settings.dockAutoHide || appFull) && p.y >= b.y + b.height - 2 && p.x >= b.x && p.x < b.x + b.width) dockWin.webContents.send('dock:reveal');
   const x = p.x - b.x, y = p.y - b.y;
   const inside = x >= dockHit.x && x <= dockHit.x + dockHit.w && y >= dockHit.y && y <= dockHit.y + dockHit.h;
   if (inside !== dockHover) {
@@ -564,6 +672,68 @@ setInterval(() => {
 }, 40);
 
 ipcMain.on('dock:hit', (_e, r) => { dockHit = r; });
+// Several monitors: the Dock shows a button to move it to another one (and its menu lists them).
+function sendDockDisplays() {
+  if (!dockWin || dockWin.isDestroyed()) return;
+  const cur = dockDisplay();
+  const list = screen.getAllDisplays().map((d, i) => ({
+    id: String(d.id), primary: d.id === screen.getPrimaryDisplay().id,
+    label: d.label || (d.id === screen.getPrimaryDisplay().id ? 'Main monitor' : `Monitor ${i + 1}`),
+  }));
+  dockWin.webContents.send('dock:displays', { list, current: String(cur.id) });
+}
+ipcMain.on('dock:moveTo', (_e, id) => {
+  const d = screen.getAllDisplays().find((x) => String(x.id) === String(id));
+  if (!d) return;
+  setSetting('dockDisplay', d.id === screen.getPrimaryDisplay().id ? '' : String(d.id));
+});
+ipcMain.on('dock:moveNext', () => {
+  const all = screen.getAllDisplays();
+  if (all.length < 2) return;
+  const at = all.findIndex((d) => d.id === dockDisplay().id);
+  const next = all[(at + 1) % all.length];
+  setSetting('dockDisplay', next.id === screen.getPrimaryDisplay().id ? '' : String(next.id));
+});
+
+// Liquid glass: Windows' own frosted blur (acrylic) in a small window placed exactly behind the
+// Dock's bar (the Dock's window itself must stay clear above the bar, for the grown icons).
+let dockGlass = null;
+let dockBar = null;   // the bar's rectangle on screen (DIP), from dock.js; null = hidden
+function applyDockGlass() {
+  const want = settings.dockEnabled && settings.barTheme === 'glass' && barShown(dockWin) && dockBar;
+  if (!want) { if (dockGlass && !dockGlass.isDestroyed() && dockGlass.isVisible()) dockGlass.hide(); return; }
+  if (!dockGlass || dockGlass.isDestroyed()) {
+    dockGlass = new BrowserWindow({
+      ...dockBar, frame: false, resizable: false, movable: false, minimizable: false, maximizable: false,
+      fullscreenable: false, skipTaskbar: true, focusable: false, alwaysOnTop: true, show: false,
+      hasShadow: false, roundedCorners: true, thickFrame: false,   // (Windows rounds its corners: 8 px, like the bar)
+      backgroundMaterial: 'acrylic', backgroundColor: '#00000000',
+    });
+    dockGlass.setIgnoreMouseEvents(true);
+    dockGlass.loadURL('data:text/html,<body style="margin:0;background:transparent"></body>');
+    dockGlass.on('closed', () => { dockGlass = null; });
+  }
+  const b = dockGlass.getBounds();
+  if (b.x !== dockBar.x || b.y !== dockBar.y || b.width !== dockBar.width || b.height !== dockBar.height) dockGlass.setBounds(dockBar);
+  if (!dockGlass.isVisible()) {
+    dockGlass.showInactive();
+    dockGlass.setAlwaysOnTop(true, 'pop-up-menu');
+    dockWin.moveTop();   // the Dock's icons above the glass
+  }
+}
+let dockBarRel = null;   // the bar inside the Dock's window (from dock.js)
+// The glass goes where the bar is on screen: again whenever the Dock's window moves (another monitor).
+function placeDockBar() {
+  if (!dockWin || dockWin.isDestroyed() || !dockBarRel) { dockBar = null; applyDockGlass(); return; }
+  const b = dockWin.getBounds(), r = dockBarRel;
+  dockBar = { x: Math.round(b.x + r.x), y: Math.round(b.y + r.y), width: Math.max(1, Math.round(r.w)), height: Math.max(1, Math.round(r.h)) };
+  applyDockGlass();
+}
+ipcMain.on('dock:bar', (_e, r) => {
+  if (!dockWin || dockWin.isDestroyed()) return;
+  dockBarRel = r || null;
+  placeDockBar();
+});
 ipcMain.handle('dock:icon', (_e, paths) => new Promise((resolve) => {
   const list = (Array.isArray(paths) ? paths : [paths]).filter(Boolean).map(String);
   if (!list.length || !helper) return resolve(null);
@@ -586,6 +756,7 @@ ipcMain.on('dock:click', (_e, item) => {
   if (!item) return;
   if (item.special === 'downloads') return require('electron').shell.openPath(app.getPath('downloads'));
   if (item.special === 'trash') return spawn('explorer.exe', ['shell:RecycleBinFolder'], { detached: true, stdio: 'ignore' }).unref();
+  if (item.special === 'move') return ipcMain.emit('dock:moveNext');
   if (item.runKey) helperCmd(`dockact ${item.runKey}`);
   else dockLaunch(item);
 });
@@ -684,26 +855,42 @@ function createMenuBar() {
     mbWin.webContents.send('mb:wifi', wifi);
     mbWin.webContents.send('dock:apps', dockApps);
   });
-  mbWin.on('closed', () => { mbWin = null; mbHit = null; mbHover = false; });
+  mbWin.on('closed', () => { mbWin = null; mbHit = null; mbHover = false; mbTall = false; });
+  mbWin.webContents.on('render-process-gone', (_e, d) => {
+    slog('menubar page gone', d && d.reason);
+    setTimeout(() => {
+      if (mbWin && !mbWin.isDestroyed()) { helperCmd(`appbar ${hwndOf(mbWin)} 0`); mbWin.destroy(); }   // its space back first
+      mbWin = null;
+      mbTall = false;
+      if (settings.menuBar) applyMenuBar();
+    }, 1000);
+  });
   // keep the notch above the menu bar
   if (win && !win.isDestroyed()) { win.setAlwaysOnTop(true, 'screen-saver'); win.moveTop(); }
 }
 function reserveMenuBar() {
   if (!mbWin || mbWin.isDestroyed()) return;
-  const on = mbWin.isVisible();
+  const on = barShown(mbWin) || mbPeekHidden;   // (peeking over a full-screen app keeps its space)
   helperCmd(`appbar ${hwndOf(mbWin)} ${on ? Math.round(MB_H * screen.getPrimaryDisplay().scaleFactor) : 0} top`);
   setTimeout(() => mbWin && mbWin._fix && mbWin._fix(), 400);
 }
 function updateMenuBarVisibility() {
   if (!mbWin || mbWin.isDestroyed()) return;
   const show = settings.menuBar && mode === 'normal';
-  if (show && !mbWin.isVisible()) { mbWin.setBounds(mbBounds()); mbWin.showInactive(); mbWin.setAlwaysOnTop(true, 'pop-up-menu'); reserveMenuBar(); setTimeout(refreshNotch, 400); }
-  if (!show && mbWin.isVisible()) { mbWin.hide(); reserveMenuBar(); }
+  if (show && appFull) {
+    // An app is full screen: the menu bar peeks in from the top edge (see above). Made while
+    // that's so: show it once, out of sight, so the peeking can bring it in.
+    if (!mbWin.isVisible()) { mbWin.setBounds(mbBounds()); mbWin.showInactive(); setBarShown(mbWin, false); mbPeekHidden = true; reserveMenuBar(); }
+    return;
+  }
+  if (show !== barShown(mbWin)) slog('menubar', show ? 'show' : 'hide');
+  if (show && !barShown(mbWin)) { mbPeekHidden = false; mbWin.setBounds(mbBounds()); setBarShown(mbWin, true); reserveMenuBar(); setTimeout(refreshNotch, 400); }
+  if (!show && (barShown(mbWin) || mbPeekHidden)) { mbPeekHidden = false; setBarShown(mbWin, false); mbHover = false; reserveMenuBar(); }
 }
 function applyMenuBar() {
   if (settings.menuBar) {
     createMenuBar();
-    if (mbWin && mbWin.isVisible()) { mbWin.setBounds(mbBounds()); reserveMenuBar(); }
+    if (barShown(mbWin)) { mbWin.setBounds(mbBounds()); reserveMenuBar(); }
     helperCmd('dock 1');   // the app in front comes from the Dock's open-apps feed
     helperCmd(`trayapps ${settings.menuBarTray ? 1 : 0}`);
     pollWifi();
@@ -745,7 +932,7 @@ app.whenReady().then(() => {
 
 // Click-through except over the bar and an open menu.
 setInterval(() => {
-  if (!mbWin || mbWin.isDestroyed() || !mbWin.isVisible() || !mbHit) return;
+  if (!barShown(mbWin) || !mbHit) return;
   const p = screen.getCursorScreenPoint();
   const b = mbWin.getBounds();
   const x = p.x - b.x, y = p.y - b.y;
@@ -848,9 +1035,17 @@ function onHelperMessage(msg) {
     if (mbWin && !mbWin.isDestroyed()) mbWin.webContents.send('mb:tray', trayApps);
     return;
   }
+  if (msg.t === 'shellrestart') {
+    // Explorer (re)started and forgot the bars' screen space and the hidden taskbar: set them again.
+    slog('explorer started');
+    syncHelper();
+    setTimeout(refreshAll, 1500);
+    return;
+  }
   if (msg.t === 'fs') {
     fullscreenApp = !!msg.v;
     fullscreenProc = msg.app || '';
+    fullscreenCls = msg.cls || '';
     updateVisibility();
     return;
   }
@@ -1140,6 +1335,8 @@ function videoInfo(url) {
     p.stderr.setEncoding('utf8');
     p.stdout.on('data', (d) => { out += d; });
     p.stderr.on('data', (d) => { err += d; });
+    // yt-dlp couldn't start (e.g. antivirus blocked it): say so instead of spinning for ever.
+    p.on('error', () => { clearTimeout(timer); resolve({ ok: false, error: 'yt-dlp could not start (blocked by antivirus?)' }); });
     p.on('exit', () => {
       clearTimeout(timer);
       try {
@@ -1261,6 +1458,13 @@ function startDownload({ url, kind, height, title, thumb }) {
   p.stderr.setEncoding('utf8');
   p.stdout.on('data', feed);
   p.stderr.on('data', feed);
+  p.on('error', () => {
+    dlProcs.delete(id);
+    if (item.status === 'cancelled') { pushDownloads(true); return; }
+    item.status = 'error';
+    item.error = 'yt-dlp could not start (blocked by antivirus?)';
+    pushDownloads(true);
+  });
   p.on('exit', (code) => {
     dlProcs.delete(id);
     if (item.status === 'cancelled') { pushDownloads(true); return; }
@@ -1590,20 +1794,29 @@ async function installUpdate() {
     if (!r.ok || !r.body) throw new Error('HTTP ' + r.status);
     const total = Number(r.headers.get('content-length')) || update.size || 0;
     const out = fs.createWriteStream(file);
+    let outErr = null;
+    const failed = new Promise((_res, rej) => out.once('error', (e) => { outErr = e; rej(e); }));
+    failed.catch(() => {});
     const reader = r.body.getReader();
     let got = 0, lastPct = -1;
     for (;;) {
+      if (outErr) throw outErr;   // the file couldn't be written (locked, disk full...)
       const { done, value } = await reader.read();
       if (done) break;
       got += value.length;
-      if (!out.write(Buffer.from(value))) await new Promise((res) => out.once('drain', res));
+      if (!out.write(Buffer.from(value))) await Promise.race([new Promise((res) => out.once('drain', res)), failed]);
       const pct = total ? Math.floor((got / total) * 100) : 0;
       if (pct !== lastPct) { lastPct = pct; update.pct = pct; sendUpdate(); }
     }
     await new Promise((res, rej) => out.end((e) => (e ? rej(e) : res())));
     if (total && got < total) throw new Error('download cut short');
     // Runs on its own (not tied to Isle), closes this Isle, installs, starts the new version.
-    spawn(file, ['/S'], { cwd: app.getPath('temp'), detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    const setup = spawn(file, ['/S'], { cwd: app.getPath('temp'), detached: true, stdio: 'ignore', windowsHide: true });
+    // If the setup can't start, or ends without replacing this Isle, offer the update again.
+    const again = () => { update = { ...update, state: 'available', failed: true }; sendUpdate(); };
+    setup.on('error', again);
+    setup.on('exit', (code) => { if (code) again(); });
+    setup.unref();
   } catch {
     update = { ...update, state: 'available', failed: true };
     sendUpdate();
@@ -1633,6 +1846,7 @@ ipcMain.on('action', (_e, a) => {
   if (a === 'quit') app.quit();
   if (a === 'eye-break') startEyeBreak();
   if (a === 'dock-import') helperCmd('dockpins');   // pinned apps = the taskbar's again
+  if (a === 'dock-move-next') ipcMain.emit('dock:moveNext');
   if (a === 'welcome' && win && !win.isDestroyed()) win.webContents.send('welcome');
 });
 ipcMain.on('eyes:done', () => endEyeBreak());
@@ -1731,11 +1945,35 @@ app.whenReady().then(() => {
       approveStartup();
     }
   }
+  if (startedAtLogin) {
+    try { fs.writeFileSync(path.join(app.getPath('userData'), 'startup.log'), `Isle ${app.getVersion()} started by Windows ${new Date().toISOString()}\n`); } catch { /* ignore */ }
+    slog('screens', JSON.stringify(screen.getAllDisplays().map((d) => [d.bounds, d.scaleFactor])));
+    const scr = (what) => () => slog(what, JSON.stringify(screen.getPrimaryDisplay().bounds));
+    screen.on('display-metrics-changed', scr('screen changed'));
+    screen.on('display-added', scr('screen added'));
+    screen.on('display-removed', scr('screen removed'));
+    app.on('child-process-gone', (_e, d) => slog('process gone', d.type, d.reason));
+  }
   createIsland();
   updateTray();
   startHelper();
   if (settings.dockEnabled) applyDock();
   if (settings.menuBar) applyMenuBar();
+  // Right after Windows starts, the screen keeps settling (resolution, scaling, Explorer starting)
+  // and the bars can go invisible meanwhile: check they're there and refresh them a few times.
+  if (startedAtLogin) {
+    for (const s of [4, 10, 20, 40, 75]) {
+      setTimeout(() => {
+        if (settings.dockEnabled && (!dockWin || dockWin.isDestroyed())) applyDock();
+        if (settings.menuBar && (!mbWin || mbWin.isDestroyed())) applyMenuBar();
+        updateVisibility();
+        refreshAll();
+        if (settings.dockEnabled) reserveDock();
+        if (settings.menuBar) reserveMenuBar();
+        slog(`check ${s}s: mode=${mode} dock=${barShown(dockWin)} menubar=${barShown(mbWin)} notch=${!!win && !win.isDestroyed() && win.isVisible()}`);
+      }, s * 1000);
+    }
+  }
   fetchWeather();
   refreshDevices();
   findFfmpeg();
@@ -1754,6 +1992,9 @@ app.on('before-quit', (e) => {
   quitting = true;
   if (smi) smi.kill();
   for (const id of [...dlProcs.keys()]) cancelDownload(id);
+  // Quitting while the helper is restarting: start it, so it can still put Windows back.
+  let fresh = false;
+  if (!quitReady && !helper) { startHelper(); fresh = true; }
   if (!quitReady && helper && helper.stdin.writable) {
     e.preventDefault();
     quitReady = true;
@@ -1765,7 +2006,8 @@ app.on('before-quit', (e) => {
     const h = helper;
     const done = () => app.quit();
     h.once('exit', done);
-    setTimeout(() => { try { h.kill(); } catch { /* gone */ } done(); }, 1500);
+    // (A few seconds: a helper busy with a slow step, or just starting, still gets to restore.)
+    setTimeout(() => { try { h.kill(); } catch { /* gone */ } done(); }, fresh ? 9000 : 4000);
     return;
   }
   if (helper) helper.kill();

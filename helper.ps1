@@ -1,4 +1,4 @@
-# Isle system helper.
+﻿# Isle system helper.
 # Prints one JSON object per line:
 #   {"t":"media", has,title,artist,album,app,playing,pos,dur}   (pos/dur in ms)
 #   {"t":"art", key, url}                                       (album art as a data URL)
@@ -102,6 +102,11 @@ namespace IsleNative {
     }
 
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+
+    // Window class of the foreground window (tells an app in full screen from a game).
+    public static string ForegroundClass() {
+      try { var sb = new System.Text.StringBuilder(256); GetClassName(GetForegroundWindow(), sb, 256); return sb.ToString(); } catch { return ""; }
+    }
 
     // Process name of the foreground window ("chrome", "valorant", ...).
     public static string ForegroundProcess() {
@@ -324,19 +329,29 @@ namespace IsleNative {
       return (IQuietHoursSettings)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("f53321fa-34f8-4b7f-b9a3-361877cb94cf")));
     }
     public static string Current() { try { string id; S().get_UserSelectedProfile(out id); return id; } catch { return ""; } }
+    // Whether Isle turned DND on is also kept in the registry: a helper that was killed or restarted
+    // still knows to turn it off again (else DND stayed on for good).
+    const string Key = @"Software\Isle";
+    static bool Marked {
+      get { try { using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(Key)) return k != null && Convert.ToInt32(k.GetValue("DndByIsle", 0)) == 1; } catch { return false; } }
+      set { try { using (var k = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(Key)) { if (value) k.SetValue("DndByIsle", 1); else k.DeleteValue("DndByIsle", false); } } catch { } }
+    }
     // Turn DND on, but only remember to undo it if it was off (never override the user's own DND).
     public static void Enable() {
       try {
         if (weTurnedOn) return;
-        if (Current() != Off) return;
-        if (S().put_UserSelectedProfile(On) == 0) weTurnedOn = true;
+        string cur = Current();
+        if (cur == On && Marked) { weTurnedOn = true; return; }   // still on from an earlier helper of ours
+        if (cur != Off) return;
+        if (S().put_UserSelectedProfile(On) == 0) { weTurnedOn = true; Marked = true; }
       } catch { }
     }
     public static void Restore() {
       try {
-        if (!weTurnedOn) return;
+        if (!weTurnedOn && !Marked) return;
         if (Current() == On) S().put_UserSelectedProfile(Off);
         weTurnedOn = false;
+        Marked = false;
       } catch { }
     }
     public static bool Active { get { return weTurnedOn; } }
@@ -579,15 +594,28 @@ namespace IsleNative {
       log.Append("[uia ").Append(DateTime.Now.ToString("HH:mm:ss")).Append("] ").Append(title).Append('\n');
       try {
         var el = System.Windows.Automation.AutomationElement.FromHandle(hwnd);
-        var all = el.FindAll(System.Windows.Automation.TreeScope.Descendants, System.Windows.Automation.Condition.TrueCondition);
+        // Walked one element at a time and stopped at 300 (or once a name is found): asking for all
+        // descendants at once built the whole tree first, seconds on a browser-based window.
+        // (Same order as before: depth-first, in document order.)
+        var walker = System.Windows.Automation.TreeWalker.ControlViewWalker;
+        var up = new System.Collections.Generic.Stack<System.Windows.Automation.AutomationElement>();
+        System.Windows.Automation.AutomationElement e = null;
+        try { e = walker.GetFirstChild(el); } catch { }
         int n = 0;
-        foreach (System.Windows.Automation.AutomationElement e in all) {
-          if (++n > 300) break;
-          string name, type;
-          try { name = (e.Current.Name ?? "").Trim(); type = e.Current.ControlType.ProgrammaticName.Replace("ControlType.", ""); } catch { continue; }
-          if (name.Length == 0) continue;
-          log.Append("  ").Append(type).Append(": ").Append(name.Length > 80 ? name.Substring(0, 80) : name).Append('\n');
-          if (callerName.Length == 0 && type == "Text" && name.Length <= 40 && !NotAName.IsMatch(name)) callerName = name;
+        while (e != null && n < 300 && callerName.Length == 0) {
+          n++;
+          string name = "", type = "";
+          try { name = (e.Current.Name ?? "").Trim(); type = e.Current.ControlType.ProgrammaticName.Replace("ControlType.", ""); } catch { }
+          if (name.Length > 0) {
+            log.Append("  ").Append(type).Append(": ").Append(name.Length > 80 ? name.Substring(0, 80) : name).Append('\n');
+            if (type == "Text" && name.Length <= 40 && !NotAName.IsMatch(name)) callerName = name;
+          }
+          System.Windows.Automation.AutomationElement next = null;
+          try { next = walker.GetFirstChild(e); } catch { }
+          if (next != null) { up.Push(e); e = next; continue; }
+          try { next = walker.GetNextSibling(e); } catch { }
+          while (next == null && up.Count > 0) { try { next = walker.GetNextSibling(up.Pop()); } catch { } }
+          e = next;
         }
       } catch (Exception ex) { log.Append("  error: ").Append(ex.Message).Append('\n'); }
       try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "isle-calls.log"), log.ToString()); } catch { }
@@ -696,7 +724,7 @@ namespace IsleNative {
         } catch (Exception ex) { log.Append("error ").Append(ex.Message); }
         log.Append(ok ? "-> pressed" : "-> not pressed").Append('\n');
         try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "isle-calls.log"), log.ToString()); } catch { }
-        Out.Line("{\"t\":\"callbtn\",\"kind\":\"" + kind + "\",\"ok\":" + (ok ? "true" : "false") + ",\"name\":\"" + hit.Replace("\\", "").Replace("\"", "") + "\"}");
+        Out.Line("{\"t\":\"callbtn\",\"kind\":\"" + kind + "\",\"ok\":" + (ok ? "true" : "false") + ",\"name\":\"" + System.Text.RegularExpressions.Regex.Replace(hit, "[\\x00-\\x1f\\\\\"]", "") + "\"}");
       });
       t.IsBackground = true;
       t.SetApartmentState(System.Threading.ApartmentState.STA);
@@ -944,6 +972,12 @@ namespace IsleNative {
     [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
     [DllImport("user32.dll")] static extern void SwitchToThisWindow(IntPtr h, bool altTab);
+    [StructLayout(LayoutKind.Sequential)] struct MOUSEIN { public int dx, dy; public uint data, flags, time; public IntPtr extra; }
+    [StructLayout(LayoutKind.Sequential)] struct INPUTM { public int type; public MOUSEIN mi; }
+    [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUTM[] inputs, int size);
+    // Windows only lets the process that got the last input bring a window to the front; the Dock's
+    // click went to Isle, not to this helper. An empty mouse input (moves nothing) counts as input.
+    static void UnlockForeground() { try { SendInput(1, new[] { new INPUTM { type = 0 } }, Marshal.SizeOf(typeof(INPUTM))); } catch { } }
     [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
     [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
@@ -1183,6 +1217,7 @@ namespace IsleNative {
     }
 
     internal static void Front(IntPtr h) {
+      UnlockForeground();
       if (IsIconic(h)) ShowWindow(h, 9);   // SW_RESTORE
       IntPtr fg = GetForegroundWindow();
       uint dummy; uint fgThread = GetWindowThreadProcessId(fg, out dummy), me = GetCurrentThreadId();
@@ -1274,7 +1309,9 @@ namespace IsleNative {
     // the menu bar at the top. Reserve(hwnd, 0) gives one back; Reserve(Zero, 0) gives all back.
     static readonly System.Collections.Generic.Dictionary<IntPtr, bool> bars = new System.Collections.Generic.Dictionary<IntPtr, bool>();
     public static void Reserve(IntPtr hwnd, int px) { Reserve(hwnd, px, false); }
-    public static void Reserve(IntPtr hwnd, int px, bool top) {
+    public static void Reserve(IntPtr hwnd, int px, bool top) { Reserve(hwnd, px, top, 0, 0, 0, 0); }
+    // mx, my, mw, mh: the monitor (real pixels) to keep the space on; mw = 0: the main monitor.
+    public static void Reserve(IntPtr hwnd, int px, bool top, int mx, int my, int mw, int mh) {
       IntPtr old = SetThreadDpiAwarenessContext((IntPtr)(-4));   // per-monitor aware: real pixels
       try {
         var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d);
@@ -1294,6 +1331,7 @@ namespace IsleNative {
         bars[hwnd] = top;
         var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(mi);
         GetMonitorInfo(MonitorFromPoint(new POINT(), 1), ref mi);   // MONITOR_DEFAULTTOPRIMARY
+        if (mw > 0 && mh > 0) { mi.rcMonitor.L = mx; mi.rcMonitor.T = my; mi.rcMonitor.R = mx + mw; mi.rcMonitor.B = my + mh; }
         d.hWnd = hwnd; d.uEdge = top ? 1u : 3u;                      // ABE_TOP / ABE_BOTTOM
         d.rc = mi.rcMonitor;
         if (top) d.rc.B = d.rc.T + px; else d.rc.T = d.rc.B - px;
@@ -1314,7 +1352,13 @@ namespace IsleNative {
       }
       return l;
     }
-    public static bool TaskbarShown { get { var h = FindWindow("Shell_TrayWnd", null); return h != IntPtr.Zero && IsWindowVisible(h); } }
+    // Explorer's taskbar window: a new one means Explorer (re)started, which forgets every
+    // screen space the bars kept (also at Windows start, when Explorer can come up after Isle).
+    public static long TrayHandle { get { return (long)FindWindow("Shell_TrayWnd", null); } }
+    // Any taskbar showing (the main one, or another monitor's that Explorer made when it was plugged in / woke).
+    public static bool TaskbarShown { get { foreach (var h in Taskbars()) if (IsWindowVisible(h)) return true; return false; } }
+    // Explorer restarted and forgot every bar: register them again on the next Reserve.
+    public static void ForgetBars() { bars.Clear(); }
     public static void ShowTaskbar(bool show) { foreach (var h in Taskbars()) ShowWindow(h, show ? 5 : 0); }   // SW_SHOW / SW_HIDE
     // The Windows key: opens Start even with the taskbar hidden.
     public static void StartMenu() { keybd_event(0x5B, 0, 0, UIntPtr.Zero); keybd_event(0x5B, 0, 2, UIntPtr.Zero); }
@@ -1824,7 +1868,9 @@ $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-O
 
 function Wait-WinRt($op, [Type]$type) {
     $task = $asTaskGeneric.MakeGenericMethod($type).Invoke($null, @($op))
-    $null = $task.Wait(3000)
+    # Not done in 3 s (e.g. a frozen app's media session): give up instead of waiting forever,
+    # which used to stop the whole loop (and with it quitting cleanly).
+    if (-not $task.Wait(3000)) { return $null }
     $task.Result
 }
 
@@ -1896,7 +1942,10 @@ function Invoke-Cmd([string]$line) {
     $parts = $line.Trim().Split(' ', 2)
     $c = $parts[0]
     $a = if ($parts.Count -gt 1) { $parts[1] } else { '0' }
-    $s = Get-Session
+    # The media session is only needed (and the media read again) for the media commands;
+    # other commands (brightness drags, Dock icons...) no longer wait on it.
+    $isMedia = $c -in 'play', 'next', 'prev', 'seek'
+    $s = if ($isMedia) { Get-Session } else { $null }
     switch ($c) {
         'play'   { if ($s) { $null = $s.TryTogglePlayPauseAsync() } else { $shell.SendKeys([string][char]179) } }
         'next'   { if ($s) { $null = $s.TrySkipNextAsync() }       else { $shell.SendKeys([string][char]176) } }
@@ -1951,7 +2000,8 @@ function Invoke-Cmd([string]$line) {
         # (menu bar) of the main screen; <pixels> 0 = give that window's back; "appbar 0" = all back
         'appbar' {
             $p = $a.Trim().Split(' ')
-            if ($p.Count -ge 2) { try { [IsleNative.Dock]::Reserve([IntPtr][long]$p[0], [int]$p[1], ($p.Count -ge 3 -and $p[2] -eq 'top')) } catch {} }
+            if ($p.Count -ge 7) { try { [IsleNative.Dock]::Reserve([IntPtr][long]$p[0], [int]$p[1], ($p[2] -eq 'top'), [int]$p[3], [int]$p[4], [int]$p[5], [int]$p[6]) } catch {} }
+            elseif ($p.Count -ge 2) { try { [IsleNative.Dock]::Reserve([IntPtr][long]$p[0], [int]$p[1], ($p.Count -ge 3 -and $p[2] -eq 'top')) } catch {} }
             else { try { [IsleNative.Dock]::Reserve([IntPtr]::Zero, 0) } catch {} }
         }
         # trim <pid,pid,...>: free unused memory in Isle's processes and in this helper.
@@ -1993,7 +2043,7 @@ function Invoke-Cmd([string]$line) {
             if ($script:perf) { $null = [IsleNative.Perf]::Net() }
         }
     }
-    $script:forceMedia = $true
+    if ($isMedia) { $script:forceMedia = $true }
 }
 
 # ---------------------------------------------------------------- Media polling
@@ -2129,13 +2179,29 @@ try {
 $btColType = [Windows.Devices.Enumeration.DeviceInformationCollection]
 $script:btLast = $null
 $script:padsJson = ''
+$script:btTasks = $null
+$script:btStarted = 0
 function Update-Bluetooth {
+    # The queries run in the background: start them, and read them on a later pass once done
+    # (waiting for them here held up the whole loop for seconds when Bluetooth was slow).
+    if ($null -eq $script:btTasks) {
+        $script:btTasks = @(foreach ($sel in $script:btSel) {
+            $asTaskGeneric.MakeGenericMethod($btColType).Invoke($null, @([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($sel)))
+        })
+        $script:btStarted = $clock.ElapsedMilliseconds
+        return
+    }
+    if (@($script:btTasks | Where-Object { -not $_.IsCompleted }).Count) {
+        if ($clock.ElapsedMilliseconds - $script:btStarted -gt 15000) { $script:btTasks = $null }   # stuck: ask again
+        return
+    }
+    $tasks = $script:btTasks
+    $script:btTasks = $null
     $names = New-Object 'System.Collections.Generic.SortedSet[string]'
-    foreach ($sel in $script:btSel) {
+    foreach ($task in $tasks) {
         # (Not Wait-WinRt: a function's empty result comes back as $null, which looked like a
         # failed query whenever no Bluetooth LE device was connected.)
-        $task = $asTaskGeneric.MakeGenericMethod($btColType).Invoke($null, @([Windows.Devices.Enumeration.DeviceInformation]::FindAllAsync($sel)))
-        if (-not $task.Wait(3000) -or $task.IsFaulted) { return }   # query failed: try again next time
+        if ($task.IsFaulted -or $task.IsCanceled) { return }   # query failed: try again next time
         foreach ($d in $task.Result) { if ($d.Name) { $null = $names.Add([string]$d.Name) } }
     }
     # USB / wireless-receiver controllers: same connect / disconnect pop-ups, and their own
@@ -2198,6 +2264,7 @@ function Set-TaskbarAutoHide([bool]$on) {
 # hidden: gone completely (auto-hide on too, so it takes no space); autohide; normal.
 $script:tbHidden = $false
 $script:tbPeekUntil = 0
+$script:lastTrayWnd = -1     # Explorer's taskbar window (-1: not looked yet)
 $script:trayOn = $false
 $script:lastTray = ''
 function Set-TaskbarMode([string]$mode) {
@@ -2486,13 +2553,19 @@ while ($true) {
 
     # Bluetooth device connected / disconnected.
     Mark-Step 'privacy'
-    if (Test-Due 'bt' (2000 * $script:slow)) { Update-Bluetooth }
+    if ($script:btTasks -or (Test-Due 'bt' (2000 * $script:slow))) { Update-Bluetooth }
 
     # Dock: the apps with windows open (sent when they change).
     Mark-Step 'bt-only'
     if ($script:dockOn -and (Test-Due 'dock' (700 * $script:slow))) {
         $dj = [IsleNative.Dock]::AppsJson()
         if ($dj -ne $script:lastDock) { [IsleNative.Out]::Line($dj); $script:lastDock = $dj }
+    }
+    # Explorer started again: tell Isle, so the Dock / menu bar keep their space again.
+    if (Test-Due 'shell' 2000) {
+        $th = [IsleNative.Dock]::TrayHandle
+        if ($script:lastTrayWnd -ne -1 -and $th -ne 0 -and $th -ne $script:lastTrayWnd) { [IsleNative.Dock]::ForgetBars(); Send-Msg ([ordered]@{ t = 'shellrestart' }) }
+        $script:lastTrayWnd = $th
     }
     # Windows' taskbar stays hidden (Windows shows it again now and then), except while peeking.
     if ($script:tbHidden -and (Test-Due 'tbhide' 1500) -and $clock.ElapsedMilliseconds -gt $script:tbPeekUntil -and [IsleNative.Dock]::TaskbarShown) { [IsleNative.Dock]::ShowTaskbar($false) }
@@ -2516,8 +2589,9 @@ while ($true) {
     if (Test-Due 'fs' 500) {
         $fs = [IsleNative.Win]::ForegroundFullscreen()
         $fsApp = if ($fs) { [IsleNative.Win]::ForegroundProcess() } else { '' }
-        $fsKey = "$fs|$fsApp"
-        if ($fsKey -ne $lastFs) { Send-Msg ([ordered]@{ t = 'fs'; v = $fs; app = $fsApp }); $lastFs = $fsKey }
+        $fsCls = if ($fs) { [IsleNative.Win]::ForegroundClass() } else { '' }
+        $fsKey = "$fs|$fsApp|$fsCls"
+        if ($fsKey -ne $lastFs) { Send-Msg ([ordered]@{ t = 'fs'; v = $fs; app = $fsApp; cls = $fsCls }); $lastFs = $fsKey }
     }
 
     Mark-Step 'fs'
