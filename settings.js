@@ -4,7 +4,7 @@ const all = (sel) => [...document.querySelectorAll(sel)];
 
 let S = {};
 const TITLES = {
-  general: 'General', media: 'Media', huds: 'HUDs', gaming: 'Gaming', widgets: 'Widgets',
+  general: 'General', dock: 'Dock & menu bar', media: 'Media', huds: 'HUDs', gaming: 'Gaming', widgets: 'Widgets',
   battery: 'Alerts', clipboard: 'Clipboard & Downloads', about: 'About',
 };
 
@@ -38,6 +38,7 @@ function fmtRange(el) {
   if (f === 'items') return v + ' items';
   if (f === 'px') return v + ' px';
   if (f === 'min') return v + ' min';
+  if (f === 'x') return v.toFixed(1) + '×';
   return String(v);
 }
 

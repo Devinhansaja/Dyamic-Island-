@@ -1,0 +1,29 @@
+<!doctype html>
+<html data-theme="black">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+  <title>Isle Menu Bar</title>
+  <link rel="stylesheet" href="menubar.css">
+</head>
+<body>
+  <div id="mb">
+    <div class="side left">
+      <button class="it start" id="start" title="Start">
+        <svg viewBox="0 0 16 16"><path d="M1.5 1.5h6v6h-6zM8.5 1.5h6v6h-6zM1.5 8.5h6v6h-6zM8.5 8.5h6v6h-6z"/></svg>
+      </button>
+      <span class="app" id="app"></span>
+    </div>
+    <div class="side right">
+      <div class="tray" id="tray"></div>
+      <button class="it" id="wifi" title="Wi-Fi"></button>
+      <button class="it" id="vol" title="Sound"></button>
+      <button class="it bat" id="bat" title="Battery"><span class="pct" id="batPct"></span><span id="batIcon"></span></button>
+      <button class="it clock" id="clock" title="Notifications and calendar"></button>
+    </div>
+  </div>
+  <!-- menus that open from the bar -->
+  <div id="pop"></div>
+  <script src="menubar.js"></script>
+</body>
+</html>

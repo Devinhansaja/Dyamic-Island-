@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const on = (channel) => (fn) => ipcRenderer.on(channel, (_e, data) => fn(data));
 
@@ -24,6 +24,30 @@ contextBridge.exposeInMainWorld('isle', {
   action: (a) => ipcRenderer.send('action', a),
   onEyes: on('eyes'),
   onWelcome: on('welcome'),
+  // menu bar
+  onMbSys: on('mb:sys'),
+  onMbTray: on('mb:tray'),
+  onMbWifi: on('mb:wifi'),
+  onMbHover: on('mb:hover'),
+  mbHit: (rects) => ipcRenderer.send('mb:hit', rects),
+  mbDo: (what, arg) => ipcRenderer.send('mb:do', what, arg),
+  mbTall: (tall) => ipcRenderer.send('mb:tall', tall),
+  // dock
+  onDockApps: on('dock:apps'),
+  onDockHover: on('dock:hover'),
+  onDockReveal: on('dock:reveal'),
+  dockHit: (r) => ipcRenderer.send('dock:hit', r),
+  dockIcon: (paths) => ipcRenderer.invoke('dock:icon', paths),
+  dockClick: (item) => ipcRenderer.send('dock:click', item),
+  dockLaunch: (item) => ipcRenderer.send('dock:launch', item),
+  dockReveal: (item) => ipcRenderer.send('dock:reveal', item),
+  dockQuit: (runKey) => ipcRenderer.send('dock:quit', runKey),
+  dockReorder: (keys) => ipcRenderer.send('dock:reorder', keys),
+  dockUnpin: (key) => ipcRenderer.send('dock:unpin', key),
+  dockPin: (item) => ipcRenderer.send('dock:pin', item),
+  // files dropped on the Dock (shortcuts, programs, folders): their paths, then pin them
+  pathForFile: (file) => { try { return webUtils.getPathForFile(file); } catch { return ''; } },
+  dockDropFiles: (paths, at) => ipcRenderer.send('dock:drop', paths, at),
   // updates
   getUpdate: () => ipcRenderer.invoke('update:get'),
   onUpdate: on('update'),

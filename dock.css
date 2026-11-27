@@ -1,0 +1,91 @@
+/* Isle Dock: a Mac-style app bar at the bottom of the main screen. */
+:root {
+  --s: 34px;                         /* icon size (Settings) */
+  --pad: 6px;
+  --bg: rgba(28, 28, 32, .74);
+  --edge: rgba(255, 255, 255, .16);
+  --sep: rgba(255, 255, 255, .22);
+  --dot: rgba(255, 255, 255, .85);
+  --label-bg: rgba(28, 28, 32, .92);
+  --label-fg: #fff;
+  --ease: cubic-bezier(.2, .8, .2, 1);
+}
+html[data-theme=white] {
+  --bg: rgba(246, 246, 248, .84);
+  --edge: rgba(0, 0, 0, .10);
+  --sep: rgba(0, 0, 0, .18);
+  --dot: rgba(0, 0, 0, .7);
+  --label-bg: rgba(250, 250, 252, .96);
+  --label-fg: #111;
+}
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; user-select: none; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
+
+#dock { position: absolute; left: 50%; bottom: 5px; transform: translateX(-50%); transition: opacity .25s var(--ease), transform .42s cubic-bezier(.22, 1, .36, 1); }
+#dock.empty { opacity: 0; }
+/* Mac-style: slides up when it first appears, and down out of sight when hiding automatically */
+#dock.intro, #dock.away { transform: translate(-50%, calc(100% + 12px)); transition: transform .38s cubic-bezier(.55, 0, .7, .3); }
+#dock.intro { transition: none; }
+#bar {
+  display: flex; align-items: flex-end; gap: 4px;
+  height: var(--s); padding: var(--pad) 7px;
+  border-radius: calc(var(--s) * .38 + 4px);
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--edge), 0 10px 30px -8px rgba(0, 0, 0, .45);
+}
+
+.item { position: relative; flex: none; width: var(--s); height: var(--s); }
+/* a new icon pops in; a removed one shrinks away */
+.item.enter img, .item.enter .ph { animation: popIn .42s cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes popIn { from { transform: scale(.2) translateY(30%); opacity: 0; } }
+.item.leave, .sep.leave { transition: width .25s var(--ease), opacity .2s, margin .25s var(--ease); opacity: 0; margin: 0 -2px; }
+.sep.leave { width: 0; }
+.item img { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, .25)); }
+.item .ph { position: absolute; inset: 12%; border-radius: 24%; background: rgba(128, 128, 128, .35); }
+.item img + .ph { display: none; }
+/* open apps: a dot under the icon (brighter for the app you're in) */
+.item .dot { position: absolute; left: 50%; bottom: -5px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--dot); opacity: 0; transition: opacity .2s; }
+.item.running .dot { opacity: .55; }
+.item.active .dot { opacity: 1; }
+.item:active img { filter: brightness(.7) drop-shadow(0 2px 3px rgba(0, 0, 0, .25)); }
+/* launching: bounces until the app's window shows up */
+.item.bounce img { animation: bounce .62s cubic-bezier(.3, 0, .4, 1) 4; }
+@keyframes bounce { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(calc(var(--s) * -.42)); } }
+/* being dragged to a new place */
+.item.drag { z-index: 2; transition: none; }
+.item.drag img { filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .35)); }
+.item.drag.out img { opacity: .45; }
+
+.sep { flex: none; align-self: center; width: 1px; height: calc(var(--s) * .72); margin: 0 4px; background: var(--sep); border-radius: 1px; }
+
+/* the app's name above the icon under the mouse */
+#label {
+  position: absolute; bottom: 0; left: 0; transform: translateX(-50%);
+  padding: 4px 10px; border-radius: 8px; white-space: nowrap;
+  font-size: 12.5px; font-weight: 500; color: var(--label-fg); background: var(--label-bg);
+  box-shadow: 0 0 0 1px var(--edge), 0 6px 16px -6px rgba(0, 0, 0, .45);
+  opacity: 0; pointer-events: none; transition: opacity .12s;
+}
+#label.on { opacity: 1; }
+
+/* right-click menu, above the icon */
+#menu {
+  position: absolute; bottom: 0; left: 0; min-width: 190px; padding: 5px;
+  border-radius: 11px; background: var(--label-bg); color: var(--label-fg);
+  box-shadow: 0 0 0 1px var(--edge), 0 14px 34px -10px rgba(0, 0, 0, .55);
+  font-size: 13px; opacity: 0; transform: translateY(6px) scale(.98); transform-origin: bottom center;
+  pointer-events: none; transition: opacity .12s, transform .16s var(--ease);
+}
+#menu.on { opacity: 1; transform: none; pointer-events: auto; }
+#menu .mi { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; cursor: default; white-space: nowrap; }
+#menu .mi:hover { background: #0a84ff; color: #fff; }
+#menu .mi .ck { width: 12px; text-align: center; font-size: 11px; }
+#menu .mi.title { font-weight: 600; opacity: .6; pointer-events: none; }
+#menu .mi.danger:hover { background: #ff453a; }
+#menu .ms { height: 1px; margin: 4px 8px; background: var(--edge); }
+
+/* the space opened up for a shortcut being dragged onto the Dock */
+.item.gap { animation: gapIn .22s cubic-bezier(.22, 1, .36, 1); }
+@keyframes gapIn { from { width: 0; } }
+
+/* animations off (Settings) */
+html.noanim *, html.noanim *::before, html.noanim *::after { transition: none !important; animation: none !important; }

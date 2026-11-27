@@ -924,6 +924,507 @@ namespace IsleNative {
     }
   }
 
+  // ---------------------------------------------------------------- Dock
+  // The apps that have windows on the taskbar (grouped like the taskbar: by app ID, else by
+  // program file), their icons, switching to them, Windows' taskbar auto-hide, and keeping
+  // screen space for the Dock (an "app bar", like the taskbar's own, so maximized windows
+  // stop above it).
+  public static class Dock {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr h, int i);
+    [DllImport("user32.dll")] static extern int GetWindowTextLength(IntPtr h);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr h, System.Text.StringBuilder s, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, System.Text.StringBuilder s, int n);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern bool BringWindowToTop(IntPtr h);
+    [DllImport("user32.dll")] static extern void SwitchToThisWindow(IntPtr h, bool altTab);
+    [DllImport("user32.dll")] static extern bool AttachThreadInput(uint a, uint b, bool attach);
+    [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindow(string cls, string title);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int v, int size);
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern bool QueryFullProcessImageName(IntPtr h, int flags, System.Text.StringBuilder s, ref int size);
+    [DllImport("shell32.dll")] static extern int SHGetPropertyStoreForWindow(IntPtr h, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHGetPropertyStoreFromParsingName(string path, IntPtr bc, int flags, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)] static extern int SHCreateItemFromParsingName(string path, IntPtr bc, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory f);
+    [DllImport("ole32.dll")] static extern int PropVariantClear(ref PROPVARIANT v);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr h);
+    [DllImport("gdi32.dll")] static extern int GetObject(IntPtr h, int size, ref BITMAP bm);
+    [DllImport("gdi32.dll")] static extern int GetDIBits(IntPtr hdc, IntPtr hbmp, uint start, uint lines, byte[] bits, ref BITMAPINFOHEADER bi, uint usage);
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+    [DllImport("shell32.dll")] static extern UIntPtr SHAppBarMessage(uint msg, ref APPBARDATA d);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(POINT p, uint flags);
+    [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr h, ref MONITORINFO mi);
+    [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr ctx);
+
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IPropertyStore {
+      [PreserveSig] int GetCount(out uint c);
+      [PreserveSig] int GetAt(uint i, out PROPERTYKEY k);
+      [PreserveSig] int GetValue(ref PROPERTYKEY k, out PROPVARIANT v);
+      [PreserveSig] int SetValue(ref PROPERTYKEY k, ref PROPVARIANT v);
+      [PreserveSig] int Commit();
+    }
+    [ComImport, Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IShellItemImageFactory { [PreserveSig] int GetImage(SIZE size, int flags, out IntPtr hbmp); }
+    [StructLayout(LayoutKind.Sequential, Pack = 4)] struct PROPERTYKEY { public Guid fmtid; public uint pid; }
+    [StructLayout(LayoutKind.Explicit, Size = 24)] struct PROPVARIANT { [FieldOffset(0)] public ushort vt; [FieldOffset(8)] public IntPtr p; }
+    [StructLayout(LayoutKind.Sequential)] struct SIZE { public int cx, cy; }
+    [StructLayout(LayoutKind.Sequential)] struct BITMAP { public int bmType, bmWidth, bmHeight, bmWidthBytes; public ushort bmPlanes, bmBitsPixel; public IntPtr bmBits; }
+    [StructLayout(LayoutKind.Sequential)] struct BITMAPINFOHEADER { public int biSize, biWidth, biHeight; public ushort biPlanes, biBitCount; public int biCompression, biSizeImage, biXPelsPerMeter, biYPelsPerMeter, biClrUsed, biClrImportant; }
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT rcMonitor; public RECT rcWork; public uint dwFlags; }
+    [StructLayout(LayoutKind.Sequential)] struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint uCallbackMessage; public uint uEdge; public RECT rc; public IntPtr lParam; }
+
+    static Guid IID_PropStore = new Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+    static Guid IID_ImageFactory = new Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b");
+    static PROPERTYKEY PKEY_AUMID = new PROPERTYKEY { fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 };
+
+    static string ReadAumid(IPropertyStore st) {
+      if (st == null) return null;
+      try {
+        PROPVARIANT v;
+        if (st.GetValue(ref PKEY_AUMID, out v) != 0) return null;
+        string s = v.vt == 31 ? Marshal.PtrToStringUni(v.p) : null;   // VT_LPWSTR
+        PropVariantClear(ref v);
+        return string.IsNullOrEmpty(s) ? null : s;
+      } catch { return null; } finally { try { Marshal.ReleaseComObject(st); } catch { } }
+    }
+    static string WindowAumid(IntPtr h) {
+      IPropertyStore st; return SHGetPropertyStoreForWindow(h, ref IID_PropStore, out st) == 0 ? ReadAumid(st) : null;
+    }
+    // App ID written in a shortcut (.lnk), e.g. Discord's; null when it has none.
+    public static string FileAumid(string path) {
+      IPropertyStore st; return SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 0, ref IID_PropStore, out st) == 0 ? ReadAumid(st) : null;
+    }
+
+    // ---- Store (packaged) apps such as WhatsApp: their program file has only a blank icon and a
+    // name like "WhatsApp.Root"; the real icon and name belong to the package. Work out the app's
+    // ID (package family name + "!" + app id from its manifest) from the install folder.
+    [ComImport, Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    interface IShellItem {
+      [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+      [PreserveSig] int GetParent(out IShellItem ppsi);
+      [PreserveSig] int GetDisplayName(uint sigdn, out IntPtr name);
+      [PreserveSig] int GetAttributes(uint mask, out uint attrs);
+      [PreserveSig] int Compare(IShellItem psi, uint hint, out int order);
+    }
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode, EntryPoint = "SHCreateItemFromParsingName")]
+    static extern int SHCreateShellItem(string path, IntPtr bc, ref Guid iid, [MarshalAs(UnmanagedType.Interface)] out IShellItem item);
+    static Guid IID_ShellItem = new Guid("43826d1e-e718-42ee-bc55-a1e261c37bfe");
+    static readonly System.Collections.Generic.Dictionary<string, string[]> pkgCache = new System.Collections.Generic.Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+    // { app ID, display name } for a program inside a Store package; null for other programs.
+    public static string[] PackagedApp(string exe) {
+      if (string.IsNullOrEmpty(exe) || exe.IndexOf(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase) < 0) return null;
+      string[] r;
+      if (pkgCache.TryGetValue(exe, out r)) return r;
+      r = null;
+      try {
+        // ...\WindowsApps\<Name>_<Version>_<Arch>_<ResourceId>_<PublisherId>\...
+        var m = System.Text.RegularExpressions.Regex.Match(exe, @"\\WindowsApps\\([^\\_]+)_[^\\_]*_[^\\_]*_[^\\_]*_([^\\_]+)\\", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (m.Success) {
+          string pfn = m.Groups[1].Value + "_" + m.Groups[2].Value;
+          string dir = exe.Substring(0, m.Index + m.Length);
+          string appId = "App";
+          try {
+            string xml = System.IO.File.ReadAllText(System.IO.Path.Combine(dir, "AppxManifest.xml"));
+            string leaf = System.IO.Path.GetFileName(exe);
+            string first = null;
+            foreach (System.Text.RegularExpressions.Match a in System.Text.RegularExpressions.Regex.Matches(xml, @"<Application\b[^>]*>", System.Text.RegularExpressions.RegexOptions.IgnoreCase)) {
+              var id = System.Text.RegularExpressions.Regex.Match(a.Value, @"\bId=""([^""]+)""");
+              var ex = System.Text.RegularExpressions.Regex.Match(a.Value, @"\bExecutable=""([^""]+)""");
+              if (!id.Success) continue;
+              if (first == null) first = id.Groups[1].Value;
+              if (ex.Success && ex.Groups[1].Value.EndsWith(leaf, StringComparison.OrdinalIgnoreCase)) { appId = id.Groups[1].Value; first = null; break; }
+            }
+            if (first != null) appId = first;
+          } catch { }
+          string aumid = pfn + "!" + appId;
+          string name = null;
+          IShellItem it;
+          if (SHCreateShellItem(@"shell:AppsFolder\" + aumid, IntPtr.Zero, ref IID_ShellItem, out it) == 0 && it != null) {
+            IntPtr p;
+            if (it.GetDisplayName(0, out p) == 0 && p != IntPtr.Zero) { name = Marshal.PtrToStringUni(p); Marshal.FreeCoTaskMem(p); }
+            Marshal.ReleaseComObject(it);
+            r = new[] { aumid, string.IsNullOrEmpty(name) ? AppName(exe) : name };
+          }
+        }
+      } catch { }
+      pkgCache[exe] = r;
+      return r;
+    }
+
+    static readonly System.Collections.Generic.Dictionary<uint, string> exeCache = new System.Collections.Generic.Dictionary<uint, string>();
+    static string ExePath(uint pid) {
+      string s;
+      if (exeCache.TryGetValue(pid, out s)) return s;
+      s = null;
+      IntPtr h = OpenProcess(0x1000, false, pid);   // PROCESS_QUERY_LIMITED_INFORMATION
+      if (h != IntPtr.Zero) {
+        var sb = new System.Text.StringBuilder(1024); int n = sb.Capacity;
+        if (QueryFullProcessImageName(h, 0, sb, ref n)) s = sb.ToString();
+        CloseHandle(h);
+      }
+      if (exeCache.Count > 400) exeCache.Clear();
+      exeCache[pid] = s;
+      return s;
+    }
+    static readonly System.Collections.Generic.Dictionary<string, string> nameCache = new System.Collections.Generic.Dictionary<string, string>();
+    static string AppName(string exe) {
+      string n;
+      if (nameCache.TryGetValue(exe, out n)) return n;
+      n = null;
+      try { var vi = System.Diagnostics.FileVersionInfo.GetVersionInfo(exe); n = (vi.FileDescription ?? "").Trim(); if (n.Length == 0) n = (vi.ProductName ?? "").Trim(); } catch { }
+      if (string.IsNullOrEmpty(n)) n = System.IO.Path.GetFileNameWithoutExtension(exe);
+      nameCache[exe] = n;
+      return n;
+    }
+
+    class Win { public IntPtr H; public string Key, Exe, Aumid, Title; public bool Min; }
+    static readonly string[] SkipClass = { "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "Windows.UI.Core.CoreWindow" };
+    static readonly string[] SkipExe = { "isle", "textinputhost", "shellexperiencehost", "searchhost", "startmenuexperiencehost", "lockapp", "applicationframehost_hidden" };
+
+    // Windows the taskbar would show, front to back.
+    static System.Collections.Generic.List<Win> TaskWindows() {
+      var list = new System.Collections.Generic.List<Win>();
+      var cls = new System.Text.StringBuilder(128);
+      EnumWindows((h, l) => {
+        if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero) return true;   // GW_OWNER: owned pop-ups aren't on the taskbar
+        int ex = GetWindowLong(h, -20);
+        bool appWin = (ex & 0x40000) != 0;                                          // WS_EX_APPWINDOW
+        if (!appWin && ((ex & 0x80) != 0 || (ex & 0x08000000) != 0)) return true;   // tool / no-activate windows
+        if ((ex & 0x80020) == 0x80020) return true;                                // click-through overlays (layered + transparent)
+        int cloaked; if (DwmGetWindowAttribute(h, 14, out cloaked, 4) == 0 && cloaked != 0) return true;   // hidden UWP / other desktops
+        if (GetWindowTextLength(h) == 0) return true;
+        cls.Length = 0; GetClassName(h, cls, 128);
+        if (Array.IndexOf(SkipClass, cls.ToString()) >= 0) return true;
+        uint pid; GetWindowThreadProcessId(h, out pid);
+        string exe = ExePath(pid);
+        if (exe == null) return true;
+        if (Array.IndexOf(SkipExe, System.IO.Path.GetFileNameWithoutExtension(exe).ToLowerInvariant()) >= 0) return true;
+        var t = new System.Text.StringBuilder(256); GetWindowText(h, t, 256);
+        string aumid = WindowAumid(h);
+        if (aumid == null) { var pk = PackagedApp(exe); if (pk != null) aumid = pk[0]; }   // Store apps: the package's app ID
+        list.Add(new Win { H = h, Exe = exe, Aumid = aumid, Title = t.ToString(), Min = IsIconic(h), Key = (aumid ?? exe).ToLowerInvariant() });
+        return true;
+      }, IntPtr.Zero);
+      return list;
+    }
+
+    static string Esc(string s) {
+      if (s == null) return "";
+      var sb = new System.Text.StringBuilder();
+      foreach (char c in s) {
+        if (c == '"' || c == '\\') sb.Append('\\').Append(c);
+        else if (c < 32) sb.Append("\\u").Append(((int)c).ToString("x4"));
+        else sb.Append(c);
+      }
+      return sb.ToString();
+    }
+
+    // {"t":"dockapps","apps":[{key, exe, aumid, name, n (windows), active, min}]}, front-most app first.
+    public static string AppsJson() {
+      IntPtr fg = GetForegroundWindow();
+      var order = new System.Collections.Generic.List<string>();
+      var groups = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<Win>>();
+      foreach (var w in TaskWindows()) {
+        if (!groups.ContainsKey(w.Key)) { groups[w.Key] = new System.Collections.Generic.List<Win>(); order.Add(w.Key); }
+        groups[w.Key].Add(w);
+      }
+      var sb = new System.Text.StringBuilder("{\"t\":\"dockapps\",\"apps\":[");
+      bool first = true;
+      foreach (var k in order) {
+        var g = groups[k]; var w0 = g[0];
+        bool active = false, allMin = true;
+        foreach (var w in g) { if (w.H == fg) active = true; if (!w.Min) allMin = false; }
+        bool frame = System.IO.Path.GetFileName(w0.Exe).Equals("ApplicationFrameHost.exe", StringComparison.OrdinalIgnoreCase);
+        var pkg = frame ? null : PackagedApp(w0.Exe);
+        string name = frame ? w0.Title : pkg != null ? pkg[1] : AppName(w0.Exe);
+        if (!first) sb.Append(','); first = false;
+        sb.Append("{\"key\":\"").Append(Esc(k)).Append("\",\"exe\":\"").Append(Esc(frame ? "" : w0.Exe))
+          .Append("\",\"aumid\":\"").Append(Esc(w0.Aumid)).Append("\",\"name\":\"").Append(Esc(name))
+          .Append("\",\"n\":").Append(g.Count).Append(",\"active\":").Append(active ? "true" : "false")
+          .Append(",\"min\":").Append(allMin ? "true" : "false").Append('}');
+      }
+      return sb.Append("]}").ToString();
+    }
+
+    // The Dock's key for a window's app (same as the open-apps list): app ID, else program file.
+    public static string KeyOf(IntPtr h) {
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      string exe = ExePath(pid);
+      if (exe == null) return null;
+      string aumid = WindowAumid(h);
+      if (aumid == null) { var pk = PackagedApp(exe); if (pk != null) aumid = pk[0]; }
+      return (aumid ?? exe).ToLowerInvariant();
+    }
+    // A window the taskbar / Dock would show (not a tool window, pop-up or Isle's own).
+    public static bool IsAppWindow(IntPtr h) {
+      if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0) return false;
+      int ex = GetWindowLong(h, -20);
+      if ((ex & 0x40000) == 0 && ((ex & 0x80) != 0 || (ex & 0x08000000) != 0)) return false;
+      if ((ex & 0x80020) == 0x80020) return false;   // click-through overlays: nothing to animate
+      var cls = new System.Text.StringBuilder(128); GetClassName(h, cls, 128);
+      if (Array.IndexOf(SkipClass, cls.ToString()) >= 0) return false;
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      string exe = ExePath(pid);
+      return exe != null && Array.IndexOf(SkipExe, System.IO.Path.GetFileNameWithoutExtension(exe).ToLowerInvariant()) < 0;
+    }
+
+    internal static void Front(IntPtr h) {
+      if (IsIconic(h)) ShowWindow(h, 9);   // SW_RESTORE
+      IntPtr fg = GetForegroundWindow();
+      uint dummy; uint fgThread = GetWindowThreadProcessId(fg, out dummy), me = GetCurrentThreadId();
+      bool attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
+      SetForegroundWindow(h);
+      BringWindowToTop(h);
+      if (attached) AttachThreadInput(me, fgThread, false);
+      if (GetForegroundWindow() != h) SwitchToThisWindow(h, true);
+    }
+
+    // Clicking a running app: bring its front window forward; if it's already in front, minimize
+    // it (like the taskbar). With several windows already in front, the next one comes forward.
+    public static string Activate(string key) {
+      key = (key ?? "").ToLowerInvariant();
+      var mine = TaskWindows().FindAll(w => w.Key == key);
+      if (mine.Count == 0) return "none";
+      IntPtr fg = GetForegroundWindow();
+      int at = mine.FindIndex(w => w.H == fg);
+      if (at < 0) {
+        Front(mine[0].H); return "front";
+      }
+      if (mine.Count > 1) { Front(mine[mine.Count - 1].H); return "next"; }
+      ShowWindow(fg, 6);   // SW_MINIMIZE
+      return "min";
+    }
+
+    public static int Quit(string key) {
+      key = (key ?? "").ToLowerInvariant();
+      int n = 0;
+      foreach (var w in TaskWindows()) if (w.Key == key) { PostMessage(w.H, 0x10, IntPtr.Zero, IntPtr.Zero); n++; }   // WM_CLOSE
+      return n;
+    }
+
+    // A file's / app's icon as a PNG data URL (with transparency). Tries each path in turn:
+    // a shortcut, a program, a folder, or "shell:AppsFolder\<app ID>" for Store apps.
+    public static string IconUrl(string[] paths, int size) {
+      foreach (var p in paths) {
+        if (string.IsNullOrEmpty(p)) continue;
+        try {
+          IShellItemImageFactory f;
+          if (SHCreateItemFromParsingName(p, IntPtr.Zero, ref IID_ImageFactory, out f) != 0 || f == null) continue;
+          IntPtr hb;
+          int hr = f.GetImage(new SIZE { cx = size, cy = size }, 0x1 | 0x4, out hb);   // BIGGERSIZEOK | ICONONLY
+          Marshal.ReleaseComObject(f);
+          if (hr != 0 || hb == IntPtr.Zero) continue;
+          try { var url = ToPng(hb); if (url != null) return url; } finally { DeleteObject(hb); }
+        } catch { }
+      }
+      return null;
+    }
+    static string ToPng(IntPtr hb) {
+      var bm = new BITMAP();
+      if (GetObject(hb, Marshal.SizeOf(typeof(BITMAP)), ref bm) == 0) return null;
+      int w = bm.bmWidth, h = Math.Abs(bm.bmHeight);
+      if (w <= 0 || h <= 0) return null;
+      var bi = new BITMAPINFOHEADER { biSize = 40, biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+      var bytes = new byte[w * h * 4];
+      IntPtr dc = GetDC(IntPtr.Zero);
+      int got = GetDIBits(dc, hb, 0, (uint)h, bytes, ref bi, 0);
+      ReleaseDC(IntPtr.Zero, dc);
+      if (got == 0) return null;
+      bool anyAlpha = false;
+      for (int i = 3; i < bytes.Length; i += 4) if (bytes[i] != 0) { anyAlpha = true; break; }
+      if (!anyAlpha) for (int i = 3; i < bytes.Length; i += 4) bytes[i] = 255;   // old icons without transparency
+      using (var bmp = new System.Drawing.Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppPArgb)) {
+        var data = bmp.LockBits(new System.Drawing.Rectangle(0, 0, w, h), System.Drawing.Imaging.ImageLockMode.WriteOnly, System.Drawing.Imaging.PixelFormat.Format32bppPArgb);
+        for (int y = 0; y < h; y++) Marshal.Copy(bytes, y * w * 4, data.Scan0 + y * data.Stride, w * 4);
+        bmp.UnlockBits(data);
+        using (var ms = new System.IO.MemoryStream()) {
+          bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+          return "data:image/png;base64," + Convert.ToBase64String(ms.ToArray());
+        }
+      }
+    }
+
+    // ---- Windows' taskbar: auto-hide on / back to how it was.
+    const uint ABM_NEW = 0, ABM_REMOVE = 1, ABM_QUERYPOS = 2, ABM_SETPOS = 3, ABM_GETSTATE = 4, ABM_SETSTATE = 10;
+    public static bool TaskbarAutoHide {
+      get { var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d); return ((uint)SHAppBarMessage(ABM_GETSTATE, ref d) & 1) != 0; }
+      set {
+        var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d);
+        d.hWnd = FindWindow("Shell_TrayWnd", null);
+        d.lParam = (IntPtr)(value ? 1 : 0);
+        SHAppBarMessage(ABM_SETSTATE, ref d);
+      }
+    }
+
+    // ---- Screen space kept free on the main screen (px = physical pixels): the Dock at the bottom,
+    // the menu bar at the top. Reserve(hwnd, 0) gives one back; Reserve(Zero, 0) gives all back.
+    static readonly System.Collections.Generic.Dictionary<IntPtr, bool> bars = new System.Collections.Generic.Dictionary<IntPtr, bool>();
+    public static void Reserve(IntPtr hwnd, int px) { Reserve(hwnd, px, false); }
+    public static void Reserve(IntPtr hwnd, int px, bool top) {
+      IntPtr old = SetThreadDpiAwarenessContext((IntPtr)(-4));   // per-monitor aware: real pixels
+      try {
+        var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d);
+        if (hwnd == IntPtr.Zero) {
+          foreach (var h in new System.Collections.Generic.List<IntPtr>(bars.Keys)) { d.hWnd = h; SHAppBarMessage(ABM_REMOVE, ref d); }
+          bars.Clear();
+          return;
+        }
+        if (px <= 0) {
+          if (bars.ContainsKey(hwnd)) { d.hWnd = hwnd; SHAppBarMessage(ABM_REMOVE, ref d); bars.Remove(hwnd); }
+          return;
+        }
+        if (!bars.ContainsKey(hwnd)) {
+          d.hWnd = hwnd; d.uCallbackMessage = 0x400 + 0x1A0;
+          SHAppBarMessage(ABM_NEW, ref d);
+        }
+        bars[hwnd] = top;
+        var mi = new MONITORINFO(); mi.cbSize = Marshal.SizeOf(mi);
+        GetMonitorInfo(MonitorFromPoint(new POINT(), 1), ref mi);   // MONITOR_DEFAULTTOPRIMARY
+        d.hWnd = hwnd; d.uEdge = top ? 1u : 3u;                      // ABE_TOP / ABE_BOTTOM
+        d.rc = mi.rcMonitor;
+        if (top) d.rc.B = d.rc.T + px; else d.rc.T = d.rc.B - px;
+        SHAppBarMessage(ABM_QUERYPOS, ref d);
+        if (top) d.rc.B = d.rc.T + px; else d.rc.T = d.rc.B - px;
+        SHAppBarMessage(ABM_SETPOS, ref d);
+      } finally { if (old != IntPtr.Zero) SetThreadDpiAwarenessContext(old); }
+    }
+
+    // ---- Windows' taskbar hidden completely (the Dock + menu bar replace it), and back.
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowEx(IntPtr parent, IntPtr after, string cls, string title);
+    [DllImport("user32.dll")] static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+    static System.Collections.Generic.List<IntPtr> Taskbars() {
+      var l = new System.Collections.Generic.List<IntPtr>();
+      foreach (var cls in new[] { "Shell_TrayWnd", "Shell_SecondaryTrayWnd" }) {
+        IntPtr h = IntPtr.Zero;
+        while ((h = FindWindowEx(IntPtr.Zero, h, cls, null)) != IntPtr.Zero) l.Add(h);
+      }
+      return l;
+    }
+    public static bool TaskbarShown { get { var h = FindWindow("Shell_TrayWnd", null); return h != IntPtr.Zero && IsWindowVisible(h); } }
+    public static void ShowTaskbar(bool show) { foreach (var h in Taskbars()) ShowWindow(h, show ? 5 : 0); }   // SW_SHOW / SW_HIDE
+    // The Windows key: opens Start even with the taskbar hidden.
+    public static void StartMenu() { keybd_event(0x5B, 0, 0, UIntPtr.Zero); keybd_event(0x5B, 0, 2, UIntPtr.Zero); }
+    // Windows key + a letter: Win+A quick settings (Wi-Fi, sound...), Win+N notifications and calendar.
+    public static void WinKey(char c) {
+      byte k = (byte)char.ToUpperInvariant(c);
+      keybd_event(0x5B, 0, 0, UIntPtr.Zero); keybd_event(k, 0, 0, UIntPtr.Zero);
+      keybd_event(k, 0, 2, UIntPtr.Zero); keybd_event(0x5B, 0, 2, UIntPtr.Zero);
+    }
+
+    // ---- Background apps: running programs that show an icon in Windows' tray ("menu bar extras").
+    // Windows lists every app that has had a tray icon under NotifyIconSettings; the ones running now
+    // are the background apps.
+    [DllImport("shell32.dll")] static extern int SHGetKnownFolderPath(ref Guid id, uint flags, IntPtr token, out IntPtr path);
+    static string KnownPath(string p) {
+      var m = System.Text.RegularExpressions.Regex.Match(p ?? "", @"^\{([0-9A-Fa-f-]{36})\}(.*)$");
+      if (!m.Success) return p;
+      try {
+        Guid g = new Guid(m.Groups[1].Value); IntPtr ptr;
+        if (SHGetKnownFolderPath(ref g, 0, IntPtr.Zero, out ptr) != 0) return null;
+        string root = Marshal.PtrToStringUni(ptr); Marshal.FreeCoTaskMem(ptr);
+        return root + m.Groups[2].Value;
+      } catch { return null; }
+    }
+    static readonly string[] TraySkip = { "explorer.exe", "isle.exe", "electron.exe", "rundll32.exe" };
+    public static string TrayAppsJson() {
+      var running = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+      foreach (var pr in System.Diagnostics.Process.GetProcesses()) {
+        try { var e = ExePath((uint)pr.Id); if (e != null) running.Add(e); } catch { } finally { pr.Dispose(); }
+      }
+      var apps = new System.Collections.Generic.SortedDictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);   // name -> exe, tip, app ID
+      var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+      try {
+        using (var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Control Panel\NotifyIconSettings")) {
+          if (k != null) foreach (var sub in k.GetSubKeyNames()) {
+            using (var s = k.OpenSubKey(sub)) {
+              if (s == null) continue;
+              string exe = KnownPath(s.GetValue("ExecutablePath") as string);
+              if (string.IsNullOrEmpty(exe) || seen.Contains(exe) || !running.Contains(exe)) continue;
+              if (Array.IndexOf(TraySkip, System.IO.Path.GetFileName(exe).ToLowerInvariant()) >= 0) continue;
+              seen.Add(exe);
+              var pkg = PackagedApp(exe);   // Store apps (WhatsApp...): real name and app ID
+              string name = pkg != null ? pkg[1] : AppName(exe);
+              string tip = (s.GetValue("InitialTooltip") as string) ?? "";
+              string key = name; int n = 2;
+              while (apps.ContainsKey(key)) key = name + " " + (n++);   // two different programs with the same name stay two
+              apps[key] = new[] { exe, tip, pkg != null ? pkg[0] : "" };
+            }
+          }
+        }
+      } catch { }
+      var sb = new System.Text.StringBuilder("{\"t\":\"trayapps\",\"apps\":[");
+      bool first = true;
+      foreach (var kv in apps) {
+        if (!first) sb.Append(','); first = false;
+        sb.Append("{\"name\":\"").Append(Esc(kv.Key)).Append("\",\"exe\":\"").Append(Esc(kv.Value[0])).Append("\",\"tip\":\"").Append(Esc(kv.Value[1])).Append("\",\"aumid\":\"").Append(Esc(kv.Value[2])).Append("\"}");
+      }
+      return sb.Append("]}").ToString();
+    }
+    // Clicking a background app: show its window (tray apps keep it hidden). "launch" = it has none.
+    public static string TrayOpen(string exe) {
+      IntPtr best = IntPtr.Zero;
+      EnumWindows((h, l) => {
+        if (GetWindow(h, 4) != IntPtr.Zero || GetWindowTextLength(h) == 0) return true;
+        uint pid; GetWindowThreadProcessId(h, out pid);
+        string e = ExePath(pid);
+        if (e == null || !e.Equals(exe, StringComparison.OrdinalIgnoreCase)) return true;
+        int st = GetWindowLong(h, -16), ex = GetWindowLong(h, -20);
+        if ((st & 0x00C00000) != 0x00C00000 || (ex & 0x80) != 0) return true;   // needs a title bar; no tool windows
+        best = h;
+        return false;
+      }, IntPtr.Zero);
+      if (best == IntPtr.Zero) return "launch";
+      ShowWindow(best, IsIconic(best) ? 9 : 5);
+      Front(best);
+      return "shown";
+    }
+
+    // An earlier Isle (1.4 test builds) switched Windows' minimize / maximize animation off for the
+    // session; if it was closed abruptly that stayed off. Put it back to the user's saved setting.
+    [StructLayout(LayoutKind.Sequential)] struct ANIMINFO { public uint cb; public int v; }
+    [DllImport("user32.dll", EntryPoint = "SystemParametersInfo")] static extern bool SpiAnim(uint a, uint b, ref ANIMINFO ai, uint f);
+    public static void FixMinAnimate() {
+      try {
+        string saved = Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Control Panel\Desktop\WindowMetrics", "MinAnimate", null) as string;
+        var ai = new ANIMINFO(); ai.cb = (uint)Marshal.SizeOf(ai);
+        SpiAnim(0x48, ai.cb, ref ai, 0);
+        if (saved == "1" && ai.v == 0) { ai.v = 1; SpiAnim(0x49, ai.cb, ref ai, 2); }
+      } catch { }
+    }
+
+    // If Isle was closed abruptly, Windows may still keep the Dock's space. Registering and
+    // removing a bar makes Windows drop bars whose windows are gone. (Done at every start.)
+    [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+    public static void Prune() {
+      IntPtr h = GetConsoleWindow();
+      if (h == IntPtr.Zero) return;
+      var d = new APPBARDATA(); d.cbSize = Marshal.SizeOf(d); d.hWnd = h; d.uCallbackMessage = 0x400 + 0x1A1;
+      SHAppBarMessage(ABM_NEW, ref d);
+      SHAppBarMessage(ABM_REMOVE, ref d);
+    }
+
+    // Isle is closing: give the space back and put the taskbar back as it was (when Isle changed it).
+    public static bool AutoHideChangedByIsle;
+    public static void Restore() {
+      try { Reserve(IntPtr.Zero, 0); } catch { }
+      try { if (AutoHideChangedByIsle) { TaskbarAutoHide = false; AutoHideChangedByIsle = false; } } catch { }
+    }
+  }
+
   // Brightness changes arrive as WMI events (laptop panels), so no slow polling is needed.
   // Brightness of every active display: the laptop panel through Windows (WMI), external
   // monitors through DDC/CI (the standard monitor-control channel over the video cable).
@@ -1310,7 +1811,9 @@ namespace IsleNative {
   }
 }
 '@
-Add-Type -TypeDefinition $nativeSource -ReferencedAssemblies System.Management, System.ServiceProcess, UIAutomationClient, UIAutomationTypes, WindowsBase
+Add-Type -TypeDefinition $nativeSource -ReferencedAssemblies System.Management, System.ServiceProcess, UIAutomationClient, UIAutomationTypes, WindowsBase, System.Drawing
+try { [IsleNative.Dock]::Prune() } catch {}   # drop the Dock's space if Isle was closed abruptly
+try { [IsleNative.Dock]::FixMinAnimate() } catch {}   # Windows' minimize animation back if an old build left it off
 
 # ---------------------------------------------------------------- WinRT (media session)
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
@@ -1409,6 +1912,48 @@ function Invoke-Cmd([string]$line) {
             if ($f.Count -ge 2) { [IsleNative.Monitors]::Set($f[0], [int][double]::Parse($f[1], $inv)) }
         }
         'monitors' { [IsleNative.Monitors]::Report($false) }
+        # ---- Dock
+        'dock'     { $script:dockOn = ($a.Trim() -eq '1'); $script:lastDock = '' }
+        'dockact'  { $null = [IsleNative.Dock]::Activate($a.Trim()); $script:lastDock = ''; $script:due['dock'] = 0 }
+        'dockquit' { $null = [IsleNative.Dock]::Quit($a.Trim()) }
+        # dockicon <id> <path>|<path>...: the first path that has an icon wins
+        'dockicon' {
+            $p = $a.Trim().Split(' ', 2)
+            if ($p.Count -eq 2) {
+                $url = [IsleNative.Dock]::IconUrl([string[]]($p[1] -split '\|'), 128)
+                Send-Msg ([ordered]@{ t = 'dockicon'; id = $p[0]; url = $url })
+            }
+        }
+        'dockpins' { Send-DockPins }
+        # taskbar hidden | autohide | normal  (1 / 0 = autohide / normal)
+        'taskbar'  { Set-TaskbarMode $a.Trim() }
+        # tbpeek <seconds>: show the hidden taskbar for a moment (to reach its tray icons)
+        'tbpeek'   { $script:tbPeekUntil = $clock.ElapsedMilliseconds + 1000 * [int]$a.Trim(); [IsleNative.Dock]::ShowTaskbar($true) }
+        'startmenu' { [IsleNative.Dock]::StartMenu() }
+        'winkey'    { $k = $a.Trim(); if ($k -match '^[a-zA-Z]$') { [IsleNative.Dock]::WinKey($k[0]) } }
+        # ---- background (tray) apps for the menu bar
+        'trayapps' { $script:trayOn = ($a.Trim() -eq '1'); $script:lastTray = ''; $script:due['tray'] = 0 }
+        'trayopen' {
+            $exe = $a.Trim()
+            if ([IsleNative.Dock]::TrayOpen($exe) -eq 'launch') {
+                # No window to show: start it again (single-instance apps open their window); Store apps
+                # by their app ID; for script hosts the Windows tray is shown for a moment instead.
+                $leaf = [IO.Path]::GetFileName($exe).ToLowerInvariant()
+                $pkg = [IsleNative.Dock]::PackagedApp($exe)
+                if ($pkg) { Start-Process explorer.exe "shell:AppsFolder\$($pkg[0])" }   # Store apps (WhatsApp...): by their app ID
+                elseif ($leaf -in 'python.exe', 'pythonw.exe', 'java.exe', 'javaw.exe', 'node.exe', 'wscript.exe', 'cscript.exe', 'powershell.exe', 'pwsh.exe', 'cmd.exe') {
+                    $script:tbPeekUntil = $clock.ElapsedMilliseconds + 10000; [IsleNative.Dock]::ShowTaskbar($true)
+                } else { try { Start-Process -FilePath $exe -WorkingDirectory (Split-Path $exe) } catch {} }
+            }
+        }
+        'trayquit' { $exe = $a.Trim(); Get-Process | Where-Object { $_.Path -eq $exe } | Stop-Process -Force -ErrorAction SilentlyContinue }
+        # appbar <window handle> <pixels> [top]: keep that much space at the bottom (Dock) or top
+        # (menu bar) of the main screen; <pixels> 0 = give that window's back; "appbar 0" = all back
+        'appbar' {
+            $p = $a.Trim().Split(' ')
+            if ($p.Count -ge 2) { try { [IsleNative.Dock]::Reserve([IntPtr][long]$p[0], [int]$p[1], ($p.Count -ge 3 -and $p[2] -eq 'top')) } catch {} }
+            else { try { [IsleNative.Dock]::Reserve([IntPtr]::Zero, 0) } catch {} }
+        }
         # trim <pid,pid,...>: free unused memory in Isle's processes and in this helper.
         'trim' {
             [GC]::Collect(); [GC]::WaitForPendingFinalizers()
@@ -1607,6 +2152,77 @@ function Update-Bluetooth {
     if ($added.Count -or $removed.Count) { Send-Msg ([ordered]@{ t = 'bt'; added = $added; removed = $removed }) }
 }
 
+# ---------------------------------------------------------------- Dock
+$script:dockOn = $false
+$script:lastDock = ''
+$isleRegKey = 'HKCU:\Software\Isle'
+
+# The apps pinned to Windows' taskbar (its shortcuts), in the taskbar's order.
+function Send-DockPins {
+    $dir = Join-Path $env:APPDATA 'Microsoft\Internet Explorer\Quick Launch\User Pinned\TaskBar'
+    $files = @(Get-ChildItem $dir -Filter *.lnk -ErrorAction SilentlyContinue)
+    # The taskbar keeps its order in a binary value that contains the shortcuts' file names.
+    $order = ''
+    try { $order = [Text.Encoding]::Unicode.GetString((Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Taskband' -ErrorAction Stop).Favorites) } catch {}
+    $files = $files | Sort-Object { $i = $order.IndexOf($_.Name); if ($i -lt 0) { [int]::MaxValue } else { $i } }, Name
+    $sh = New-Object -ComObject WScript.Shell
+    $list = @()
+    foreach ($f in $files) {
+        $exe = ''
+        try { $exe = [string]$sh.CreateShortcut($f.FullName).TargetPath } catch {}
+        $aumid = [IsleNative.Dock]::FileAumid($f.FullName)
+        if ($aumid -eq 'Microsoft.Windows.Explorer' -and -not $exe) { $exe = Join-Path $env:WINDIR 'explorer.exe' }
+        $list += [ordered]@{ name = ($f.BaseName -replace ' - Shortcut$', ''); lnk = $f.FullName; exe = $exe; aumid = [string]$aumid }
+    }
+    Send-Msg ([ordered]@{ t = 'dockpins'; list = @($list) })
+}
+
+# Windows' taskbar auto-hide while the Dock is on. A marker in the registry remembers that Isle
+# turned it on, so it's put back even after Isle was closed abruptly.
+function Set-TaskbarAutoHide([bool]$on) {
+    $marked = $false
+    try { $marked = [bool](Get-ItemProperty $isleRegKey -Name TaskbarAutoHide -ErrorAction Stop).TaskbarAutoHide } catch {}
+    if ($on) {
+        if (-not [IsleNative.Dock]::TaskbarAutoHide) {
+            [IsleNative.Dock]::TaskbarAutoHide = $true
+            $marked = $true
+            try { New-Item $isleRegKey -Force -ErrorAction Stop | Out-Null; Set-ItemProperty $isleRegKey TaskbarAutoHide 1 } catch {}
+        }
+        if ($marked) { [IsleNative.Dock]::AutoHideChangedByIsle = $true }
+    } elseif ([IsleNative.Dock]::AutoHideChangedByIsle -or $marked) {
+        [IsleNative.Dock]::TaskbarAutoHide = $false
+        [IsleNative.Dock]::AutoHideChangedByIsle = $false
+        Remove-ItemProperty $isleRegKey -Name TaskbarAutoHide -ErrorAction SilentlyContinue
+    }
+}
+# hidden: gone completely (auto-hide on too, so it takes no space); autohide; normal.
+$script:tbHidden = $false
+$script:tbPeekUntil = 0
+$script:trayOn = $false
+$script:lastTray = ''
+function Set-TaskbarMode([string]$mode) {
+    if ($mode -eq '1') { $mode = 'autohide' } elseif ($mode -eq '0') { $mode = 'normal' }
+    if ($mode -eq 'hidden') {
+        Set-TaskbarAutoHide $true
+        [IsleNative.Dock]::ShowTaskbar($false)
+        $script:tbHidden = $true
+        try { New-Item $isleRegKey -Force -ErrorAction Stop | Out-Null; Set-ItemProperty $isleRegKey TaskbarHidden 1 } catch {}
+    } else {
+        $wasHidden = $script:tbHidden
+        try { if ((Get-ItemProperty $isleRegKey -Name TaskbarHidden -ErrorAction Stop).TaskbarHidden) { $wasHidden = $true } } catch {}
+        if ($wasHidden) { [IsleNative.Dock]::ShowTaskbar($true) }
+        $script:tbHidden = $false
+        Remove-ItemProperty $isleRegKey -Name TaskbarHidden -ErrorAction SilentlyContinue
+        Set-TaskbarAutoHide ($mode -eq 'autohide')
+    }
+}
+function Restore-Dock {
+    $was = [IsleNative.Dock]::AutoHideChangedByIsle
+    if ($script:tbHidden) { [IsleNative.Dock]::ShowTaskbar($true); Remove-ItemProperty $isleRegKey -Name TaskbarHidden -ErrorAction SilentlyContinue }
+    [IsleNative.Dock]::Restore()
+    if ($was) { Remove-ItemProperty $isleRegKey -Name TaskbarAutoHide -ErrorAction SilentlyContinue }
+}
+
 $notifAccessType = [Windows.UI.Notifications.Management.UserNotificationListenerAccessStatus]
 $notifListType = [System.Collections.Generic.IReadOnlyList[Windows.UI.Notifications.UserNotification]]
 $script:listener = $null
@@ -1799,12 +2415,12 @@ while ($true) {
     $script:stepAt = $clock.ElapsedMilliseconds
     while ($readTask.IsCompleted) {
         $line = $readTask.Result
-        if ($null -eq $line) { [IsleNative.Dnd]::Restore(); [IsleNative.Osd]::Restore(); exit }   # stdin closed: the app is gone
+        if ($null -eq $line) { [IsleNative.Dnd]::Restore(); [IsleNative.Osd]::Restore(); Restore-Dock; exit }   # stdin closed: the app is gone
         Invoke-Cmd $line
         $readTask = $stdin.ReadLineAsync()
     }
 
-    if ((Test-Due 'parent' 3000) -and $ParentPid -gt 0 -and -not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { [IsleNative.Dnd]::Restore(); [IsleNative.Osd]::Restore(); exit }
+    if ((Test-Due 'parent' 3000) -and $ParentPid -gt 0 -and -not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { [IsleNative.Dnd]::Restore(); [IsleNative.Osd]::Restore(); Restore-Dock; exit }
 
     # Safety-net poll for volume (events normally report it within milliseconds).
     Mark-Step 'start'
@@ -1871,6 +2487,20 @@ while ($true) {
     # Bluetooth device connected / disconnected.
     Mark-Step 'privacy'
     if (Test-Due 'bt' (2000 * $script:slow)) { Update-Bluetooth }
+
+    # Dock: the apps with windows open (sent when they change).
+    Mark-Step 'bt-only'
+    if ($script:dockOn -and (Test-Due 'dock' (700 * $script:slow))) {
+        $dj = [IsleNative.Dock]::AppsJson()
+        if ($dj -ne $script:lastDock) { [IsleNative.Out]::Line($dj); $script:lastDock = $dj }
+    }
+    # Windows' taskbar stays hidden (Windows shows it again now and then), except while peeking.
+    if ($script:tbHidden -and (Test-Due 'tbhide' 1500) -and $clock.ElapsedMilliseconds -gt $script:tbPeekUntil -and [IsleNative.Dock]::TaskbarShown) { [IsleNative.Dock]::ShowTaskbar($false) }
+    # Background (tray) apps for the menu bar.
+    if ($script:trayOn -and (Test-Due 'tray' (4000 * $script:slow))) {
+        $tj = [IsleNative.Dock]::TrayAppsJson()
+        if ($tj -ne $script:lastTray) { [IsleNative.Out]::Line($tj); $script:lastTray = $tj }
+    }
 
     # Follow the default output device (e.g. when headphones connect).
     Mark-Step 'bt'
