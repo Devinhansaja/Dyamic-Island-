@@ -60,6 +60,8 @@ svg { display: block; fill: currentColor; }
 .pi.info, .pi.info:hover { background: none; color: var(--fg); }
 .pi.danger:hover { background: #ff453a; }
 .pi .sub { margin-left: auto; color: var(--muted); }
+.pi.choice { gap: 4px; }
+.pi .ck { width: 16px; flex: none; font-style: normal; font-weight: 700; text-align: center; }
 .pi:hover .sub { color: rgba(255, 255, 255, .75); }
 .ps { height: 1px; margin: 5px 8px; background: var(--edge); }
 /* sound slider */

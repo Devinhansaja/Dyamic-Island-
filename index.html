@@ -136,6 +136,9 @@
         <div class="side quick">
           <button class="q-btn dnd" id="qDnd" title="Do not disturb: no notification pop-ups"><svg><use href="#i-moon"/></svg></button>
           <button class="q-btn silent" id="qSilent" title="Silent: mute the PC"><svg><use href="#i-spk-off"/></svg></button>
+          <!-- sound output: click to switch to the next one (speakers, headphones...); shown with 2 or more -->
+          <button class="q-btn output" id="qOut" title="Sound output"><svg><use href="#d-headphones"/></svg></button>
+          <span class="q-outname" id="qOutName"></span>
           <span class="priv-label" id="privLabel"></span>
           <!-- on a call: timer + mute + end, so the call stays in reach while the panel is open -->
           <span class="q-call" id="qCall">

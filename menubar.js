@@ -7,6 +7,7 @@ const pop = $('pop');
 let S = {};
 let power = null;       // { ac, charging, pct, battery }
 let vol = null;         // { v, m }
+let outputs = [];       // sound outputs [{ id, name, def }]
 let wifi = { kind: 'none' };
 let tray = [];
 let openFor = null;     // the bar item whose menu is open
@@ -116,14 +117,31 @@ function wifiMenu() {
     row('Network settings…', () => api.mbDo('uri', 'ms-settings:network-wifi')),
   ];
 }
+// "Headphones (soundcore R60i NC)" → the device's name, with its kind on the right.
+function outName(o) {
+  const m = /^(.*?) \((.*)\)$/.exec(o.name || '');
+  return m ? { label: m[2], sub: m[1] } : { label: o.name || 'Output', sub: '' };
+}
 function volMenu() {
-  return [
+  const rows = [
     { title: 'Sound', right: vol ? (vol.m ? 'Muted' : `${vol.v}%`) : '' },
     { slider: true },
     row(vol && vol.m ? 'Unmute' : 'Mute', () => { api.mbDo('mute'); if (vol) vol = { ...vol, m: !vol.m }; renderStatus(); }, { keep: true }),
-    '-',
-    row('Sound settings…', () => api.mbDo('uri', 'ms-settings:sound')),
   ];
+  // Output: every speaker / headphones / monitor sound; click one to switch to it (like a Mac).
+  if (outputs.length) {
+    rows.push('-', { title: 'Output' });
+    for (const o of outputs) {
+      const n = outName(o);
+      rows.push(row(n.label, () => {
+        if (o.def) return;
+        outputs = outputs.map((x) => ({ ...x, def: x.id === o.id }));   // shows at once; the helper confirms
+        api.mbDo('output', o.id);
+      }, { keep: true, check: !!o.def, sub: n.sub }));
+    }
+  }
+  rows.push('-', row('Sound settings…', () => api.mbDo('uri', 'ms-settings:sound')));
+  return rows;
 }
 function batMenu() {
   if (!power) return [];
@@ -163,7 +181,8 @@ function fillPop(rows) {
     }
     if (r.slider) { pop.appendChild(makeSlider()); continue; }
     const d = document.createElement('div');
-    d.className = 'pi' + (r.info ? ' info' : '') + (r.danger ? ' danger' : '');
+    d.className = 'pi' + (r.info ? ' info' : '') + (r.danger ? ' danger' : '') + ('check' in r ? ' choice' : '');
+    if ('check' in r) { const c = document.createElement('i'); c.className = 'ck'; c.textContent = r.check ? '✓' : ''; d.appendChild(c); }
     const t = document.createElement('span'); t.textContent = r.label; d.appendChild(t);
     if (r.sub) { const s = document.createElement('span'); s.className = 'sub'; s.textContent = r.sub; d.appendChild(s); }
     if (r.run) d.addEventListener('click', () => { if (!r.keep) closePop(); r.run(); if (r.keep) refreshPop(); });
@@ -240,6 +259,7 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 api.onMbSys((m) => {
   if (m.t === 'power') power = m;
   if (m.t === 'vol' && m.v >= 0 && !sliding) vol = { v: m.v, m: !!m.m };
+  if (m.t === 'outputs') outputs = Array.isArray(m.list) ? m.list : [];
   renderStatus();
 });
 api.onMbWifi((w) => { wifi = w || { kind: 'none' }; renderStatus(); });

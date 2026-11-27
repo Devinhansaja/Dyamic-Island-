@@ -545,6 +545,11 @@ html[data-theme=glass] .t-badge { border-color: rgba(255, 255, 255, .45); }
 .q-btn:hover { color: var(--fg); }
 .q-btn.dnd.on { background: #5e5ce6; color: #fff; }
 .q-btn.silent.on { background: var(--red); color: #fff; }
+/* sound output switch, and the name of the one just picked (a moment) */
+.q-outname { display: none; font-size: 11px; font-weight: 600; color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; margin-left: 2px; }
+.q-outname.on { display: inline; animation: qoIn .2s ease-out; }
+@keyframes qoIn { from { opacity: 0; transform: translateX(-4px); } }
+#notch.priv-on .q-outname.on ~ .priv-label { display: none; }
 /* call strip in the open panel (only while on a call) */
 .q-call { display: none; align-items: center; gap: 4px; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--card-border); }
 #notch.call-on .q-call { display: inline-flex; }

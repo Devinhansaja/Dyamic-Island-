@@ -314,6 +314,94 @@ namespace IsleNative {
     }
   }
 
+  // ---- Sound outputs (speakers, headphones, HDMI / monitor speakers, Bluetooth...): the list, and
+  // making one the default (what Windows' own sound flyout does, through IPolicyConfig).
+  [Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevEnumOut {
+    int EnumAudioEndpoints(int dataFlow, int stateMask, out IMMDevCollOut devices);
+    int GetDefaultAudioEndpoint(int dataFlow, int role, out IMMDevOut endpoint);
+  }
+  [Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevCollOut {
+    int GetCount(out uint count);
+    int Item(uint index, out IMMDevOut device);
+  }
+  [Guid("D666063F-1587-4E43-81F1-B948E807363F"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IMMDevOut {
+    int Activate(ref Guid iid, int clsCtx, IntPtr p, [MarshalAs(UnmanagedType.IUnknown)] out object o);
+    int OpenPropertyStore(int access, out IPropStoreOut props);
+    int GetId([MarshalAs(UnmanagedType.LPWStr)] out string id);
+    int GetState(out int state);
+  }
+  [StructLayout(LayoutKind.Sequential)] struct PKEYOut { public Guid fmtid; public int pid; }
+  [StructLayout(LayoutKind.Sequential)] struct PVOut { public ushort vt; public ushort r1, r2, r3; public IntPtr p; public IntPtr p2; }
+  [Guid("886d8eeb-8cf2-4446-8d02-cdba1dbdcf99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPropStoreOut {
+    int GetCount(out int c);
+    int GetAt(int i, out PKEYOut k);
+    int GetValue(ref PKEYOut key, out PVOut v);
+  }
+  [Guid("f8679f50-850a-41cf-9c72-430f290290c8"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPolicyConfig {
+    int a(); int b(); int c(); int d(); int e(); int f(); int g(); int h(); int i(); int j();   // (not used: only their slots)
+    [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string id, int role);
+  }
+  [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")] class PolicyConfigClient { }
+
+  public static class AudioOut {
+    [DllImport("ole32.dll")] static extern int PropVariantClear(ref PVOut v);
+    static string Name(IMMDevOut d) {
+      try {
+        IPropStoreOut ps;
+        if (d.OpenPropertyStore(0, out ps) != 0) return "";
+        var key = new PKEYOut { fmtid = new Guid("a45c254e-df1c-4efd-8020-67d146a850e0"), pid = 14 };   // friendly name
+        PVOut v;
+        if (ps.GetValue(ref key, out v) != 0) return "";
+        string s = v.vt == 31 ? Marshal.PtrToStringUni(v.p) : "";
+        PropVariantClear(ref v);
+        return s ?? "";
+      } catch { return ""; }
+    }
+    static string Esc(string s) {
+      var sb = new System.Text.StringBuilder();
+      foreach (char c in s ?? "") { if (c == '"' || c == '\\') sb.Append('\\').Append(c); else if (c < 32) sb.Append(' '); else sb.Append(c); }
+      return sb.ToString();
+    }
+    // {"t":"outputs","list":[{"id":..,"name":..,"def":true}]}: the working outputs, the default marked.
+    public static string Json() {
+      var sb = new System.Text.StringBuilder("{\"t\":\"outputs\",\"list\":[");
+      try {
+        var en = (IMMDevEnumOut)(new MMDeviceEnumeratorComObject());
+        string defId = "";
+        IMMDevOut def;
+        if (en.GetDefaultAudioEndpoint(0, 0, out def) == 0 && def != null) def.GetId(out defId);
+        IMMDevCollOut col;
+        if (en.EnumAudioEndpoints(0 /* render */, 1 /* active */, out col) == 0) {
+          uint n; col.GetCount(out n);
+          bool first = true;
+          for (uint i = 0; i < n; i++) {
+            IMMDevOut d;
+            if (col.Item(i, out d) != 0 || d == null) continue;
+            string id; if (d.GetId(out id) != 0 || id == null) continue;
+            if (!first) sb.Append(','); first = false;
+            sb.Append("{\"id\":\"").Append(Esc(id)).Append("\",\"name\":\"").Append(Esc(Name(d)))
+              .Append("\",\"def\":").Append(id == defId ? "true" : "false").Append('}');
+          }
+        }
+      } catch { }
+      return sb.Append("]}").ToString();
+    }
+    // Make it the default output for everything (console, multimedia, communications).
+    public static bool SetDefault(string id) {
+      try {
+        var pc = (IPolicyConfig)(new PolicyConfigClient());
+        bool ok = true;
+        for (int role = 0; role < 3; role++) ok &= pc.SetDefaultEndpoint(id, role) == 0;
+        return ok;
+      } catch { return false; }
+    }
+  }
+
   // Windows "Do not disturb" (quiet hours profile). Isle turns it on while it runs so Windows'
   // own banners stay away; notifications still reach the notification center, where Isle reads them.
   [ComImport, Guid("6bff4732-81ec-4ffb-ae67-b6c1bc29631f"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -1953,6 +2041,13 @@ function Invoke-Cmd([string]$line) {
         'seek'   { if ($s) { $null = $s.TryChangePlaybackPositionAsync([long]([double]::Parse($a, $inv) * 10000000)) } }
         'vol'    { [IsleNative.Audio]::SetVolume([int][double]::Parse($a, $inv)) }
         'mute'   { [IsleNative.Audio]::ToggleMute() }
+        # outputs: the sound outputs now; output <id>: make that one the default
+        'outputs' { $script:lastOutputs = ''; $script:due['outputs'] = 0 }
+        'output'  {
+            $null = [IsleNative.AudioOut]::SetDefault($a.Trim())
+            [IsleNative.Audio]::Watch(); [IsleNative.Audio]::ReportNow()   # volume of the new output
+            $script:lastOutputs = ''; $script:due['outputs'] = 0
+        }
         'bright' { Set-Bright ([int][double]::Parse($a, $inv)); $script:forceBright = $true }
         'osd'    { [IsleNative.Osd]::Enabled = ($a.Trim() -eq '1') }
         # mbright <monitor id> <0-100>: one display's brightness (from the notch's sliders)
@@ -2265,6 +2360,7 @@ function Set-TaskbarAutoHide([bool]$on) {
 $script:tbHidden = $false
 $script:tbPeekUntil = 0
 $script:lastTrayWnd = -1     # Explorer's taskbar window (-1: not looked yet)
+$script:lastOutputs = ''     # the sound outputs list last sent
 $script:trayOn = $false
 $script:lastTray = ''
 function Set-TaskbarMode([string]$mode) {
@@ -2560,6 +2656,15 @@ while ($true) {
     if ($script:dockOn -and (Test-Due 'dock' (700 * $script:slow))) {
         $dj = [IsleNative.Dock]::AppsJson()
         if ($dj -ne $script:lastDock) { [IsleNative.Out]::Line($dj); $script:lastDock = $dj }
+    }
+    # Sound outputs (plugged in / connected / default changed): sent when the list changes.
+    if (Test-Due 'outputs' 3000) {
+        $oj = [IsleNative.AudioOut]::Json()
+        if ($oj -ne $script:lastOutputs) {
+            # (the default may have moved: follow the volume of the one in use now)
+            if ($script:lastOutputs) { [IsleNative.Audio]::Watch(); [IsleNative.Audio]::ReportNow() }
+            $script:lastOutputs = $oj; [IsleNative.Out]::Line($oj)
+        }
     }
     # Explorer started again: tell Isle, so the Dock / menu bar keep their space again.
     if (Test-Due 'shell' 2000) {

@@ -1216,10 +1216,33 @@ function onCallButton(d) {
 
 let privacy = { mic: [], cam: [] };
 
+let outputs = [];   // sound outputs [{ id, name, def }] from the helper
+// "Headphones (soundcore R60i NC)" → "soundcore R60i NC"
+const outLabel = (o) => { const m = /^(.*?) \((.*)\)$/.exec(o.name || ''); return m ? m[2] : (o.name || 'Output'); };
 function renderQuick() {
   $('qDnd').classList.toggle('on', !!S.islandDnd);
   $('qSilent').classList.toggle('on', !!(vol && vol.m));
+  const q = $('qOut');
+  q.style.display = outputs.length > 1 ? '' : 'none';
+  const cur = outputs.find((o) => o.def);
+  q.title = `Sound output: ${cur ? outLabel(cur) : '—'}\nClick for the next one`;
+  q.innerHTML = cur && /headphone|headset|earbud|buds|airpods/i.test(cur.name) ? icon('d-headphones') : icon('i-spk');
 }
+// Next sound output; a pop-up says which one is playing now.
+$('qOut').addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (outputs.length < 2) return;
+  const at = outputs.findIndex((o) => o.def);
+  const next = outputs[(at + 1) % outputs.length];
+  outputs = outputs.map((o) => ({ ...o, def: o.id === next.id }));
+  api.cmd(`output ${next.id}`);
+  renderQuick();
+  const n = $('qOutName');
+  n.textContent = outLabel(next);
+  n.classList.add('on');
+  clearTimeout(T.outName);
+  T.outName = setTimeout(() => n.classList.remove('on'), 2200);
+});
 $('qDnd').addEventListener('click', () => api.set('islandDnd', !S.islandDnd));
 $('qSilent').addEventListener('click', () => {
   if (!vol) return;
@@ -1253,6 +1276,7 @@ function renderPrivacy() {
 
 api.onSys((d) => {
   if (d.t === 'privacy') { privacy = { mic: d.mic || [], cam: d.cam || [] }; renderPrivacy(); return; }
+  if (d.t === 'outputs') { outputs = Array.isArray(d.list) ? d.list : []; renderQuick(); return; }
   if (d.t === 'power') { onPower(d); return; }
   if (d.t === 'call') { onCall(d); return; }
   if (d.t === 'callbtn') { onCallButton(d); return; }

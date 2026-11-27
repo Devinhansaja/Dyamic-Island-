@@ -850,7 +850,7 @@ function createMenuBar() {
   mbWin.loadFile('menubar.html');
   mbWin.once('ready-to-show', () => { updateMenuBarVisibility(); reserveMenuBar(); });
   mbWin.webContents.on('did-finish-load', () => {
-    for (const k of ['power', 'vol']) if (lastSys[k]) mbWin.webContents.send('mb:sys', lastSys[k]);
+    for (const k of ['power', 'vol', 'outputs']) if (lastSys[k]) mbWin.webContents.send('mb:sys', lastSys[k]);
     mbWin.webContents.send('mb:tray', trayApps);
     mbWin.webContents.send('mb:wifi', wifi);
     mbWin.webContents.send('dock:apps', dockApps);
@@ -965,6 +965,7 @@ ipcMain.on('mb:do', (_e, what, arg) => {
     case 'notifs': helperCmd('winkey n'); break;                // notifications + calendar
     case 'vol': helperCmd(`vol ${Math.max(0, Math.min(100, Math.round(Number(arg) || 0)))}`); break;
     case 'mute': helperCmd('mute'); break;
+    case 'output': if (arg) helperCmd(`output ${String(arg).replace(/[\r\n]/g, '')}`); break;   // make this sound output the default
     case 'trayopen': if (arg) helperCmd(`trayopen ${arg}`); break;
     case 'trayquit': if (arg) helperCmd(`trayquit ${arg}`); break;
     case 'tray': helperCmd('tbpeek 12'); break;                 // the real Windows tray, for a moment
@@ -1086,7 +1087,8 @@ function onHelperMessage(msg) {
   if (msg.t === 'power') lastSys.power = msg;
   if (msg.t === 'bright') lastSys.bright = msg;
   if (msg.t === 'vol') lastSys.vol = msg;
-  if ((msg.t === 'power' || msg.t === 'vol') && mbWin && !mbWin.isDestroyed()) mbWin.webContents.send('mb:sys', msg);
+  if (msg.t === 'outputs') lastSys.outputs = msg;   // the sound outputs, for picking one
+  if ((msg.t === 'power' || msg.t === 'vol' || msg.t === 'outputs') && mbWin && !mbWin.isDestroyed()) mbWin.webContents.send('mb:sys', msg);
   if (msg.t === 'monitors') lastSys.monitors = { ...msg, show: false }; // replayed without popping the HUD
   if (win && !win.isDestroyed()) win.webContents.send('sys', msg);
 }
@@ -1148,7 +1150,7 @@ async function onNotification(msg) {
 const lastSys = {};
 function replayState() {
   if (!win || win.isDestroyed()) return;
-  for (const k of ['vol', 'bright', 'monitors', 'privacy', 'power', 'media', 'art']) if (lastSys[k]) win.webContents.send('sys', lastSys[k]);
+  for (const k of ['vol', 'outputs', 'bright', 'monitors', 'privacy', 'power', 'media', 'art']) if (lastSys[k]) win.webContents.send('sys', lastSys[k]);
   for (const [app, url] of appIconByApp) win.webContents.send('appicon', { app, url });
 }
 
