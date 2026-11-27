@@ -1848,6 +1848,11 @@ namespace IsleNative {
 
     public static void Restore() { lock (gate) { enabled = false; foreach (var h in FindAll()) Apply(h); } }
 
+    // Checked every second while on: something else can make the pop-up visible again (the guard
+    // of an earlier helper that just ended, Explorer redrawing it), and then Windows' bar showed
+    // along with the notch's.
+    public static void Reassert() { lock (gate) { if (enabled) foreach (var h in FindAll()) Apply(h); } }
+
     // Is this Explorer's small volume / brightness pop-up window?
     static bool IsPopup(IntPtr hwnd) {
       var c = new System.Text.StringBuilder(64);
@@ -2657,6 +2662,8 @@ while ($true) {
         $dj = [IsleNative.Dock]::AppsJson()
         if ($dj -ne $script:lastDock) { [IsleNative.Out]::Line($dj); $script:lastDock = $dj }
     }
+    # Windows' own volume / brightness bar stays hidden while the notch's HUD is on.
+    if (Test-Due 'osd' 1000) { try { [IsleNative.Osd]::Reassert() } catch {} }
     # Sound outputs (plugged in / connected / default changed): sent when the list changes.
     if (Test-Due 'outputs' 3000) {
         $oj = [IsleNative.AudioOut]::Json()
