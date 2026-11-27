@@ -218,13 +218,36 @@ function magnify() {
 function frame() { if (!raf) raf = requestAnimationFrame(() => { raf = 0; magnify(); }); }
 
 document.addEventListener('mousemove', (e) => {
-  if (!hovering && !drag) return;
+  if (!hovering && !(drag && drag.started)) return;
   mouseX = e.clientX;
   frame();
 });
+// Back to normal size for sure: the easing runs on animation frames, which Windows / Chromium can
+// stop for a while (the window counted as covered), and that left the icons stuck grown.
+let settleT = 0;
+function snapToBase() {
+  if (mouseX !== null || (drag && drag.started)) return;
+  const base = size();
+  for (const el of bar.children) {
+    if (!el.classList.contains('item') || el.classList.contains('leave')) continue;
+    el._w = base;
+    el.style.width = el.style.height = base + 'px';
+  }
+  showLabel();
+  reportHit();
+}
 api.onDockHover((h) => {
   hovering = h;
-  if (!h && !drag) { mouseX = null; magnify(); }   // eases back to normal size
+  if (!h) {
+    // A press that never got its release (let go outside the Dock) mustn't keep the icons following the mouse.
+    if (drag && !drag.started) { try { drag.el.releasePointerCapture && drag.el.releasePointerCapture(drag.pid); } catch {} drag = null; }
+    if (!drag) {
+      mouseX = null;
+      magnify();   // eases back to normal size
+      clearTimeout(settleT);
+      settleT = setTimeout(snapToBase, 450);
+    }
+  }
   autoHideUpdate();
 });
 
@@ -373,8 +396,19 @@ bar.addEventListener('pointerdown', (e) => {
   if (menuFor) closeMenu();
   const el = e.target.closest('.item');
   if (!el) return;
-  drag = { el, x0: e.clientX, y0: e.clientY, started: false };
+  drag = { el, x0: e.clientX, y0: e.clientY, started: false, pid: e.pointerId };
   el.setPointerCapture(e.pointerId);
+});
+// The press lost its pointer without a release (another window took the mouse): it's called off,
+// with nothing moved, kept or removed (the event's position can't be trusted for a drop).
+bar.addEventListener('lostpointercapture', (e) => {
+  if (!drag || drag.el !== e.target) return;
+  const d = drag;
+  drag = null;
+  d.el.style.transform = '';
+  d.el.classList.remove('drag', 'out');
+  if (!hovering) { mouseX = null; magnify(); }
+  autoHideUpdate();
 });
 bar.addEventListener('pointermove', (e) => {
   if (!drag) return;
